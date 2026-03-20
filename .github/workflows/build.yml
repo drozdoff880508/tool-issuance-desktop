@@ -20,6 +20,17 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Download Node.js portable
+        shell: pwsh
+        run: |
+          $nodeVersion = "20.18.0"
+          $url = "https://nodejs.org/dist/v$nodeVersion/node-v$nodeVersion-win-x64.zip"
+          Invoke-WebRequest -Uri $url -OutFile node.zip
+          Expand-Archive -Path node.zip -DestinationPath .
+          Rename-Item -Path "node-v$nodeVersion-win-x64" -NewName "node"
+          Remove-Item node.zip
+          Write-Host "Node.js portable downloaded"
+
       - name: Install dependencies
         run: npm install
 
