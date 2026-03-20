@@ -49,7 +49,6 @@ function createWindow() {
 
 function log(message) {
   console.log(message);
-  // Also write to a log file for debugging
   const logFile = path.join(app.getPath('temp'), 'tool-issuance-debug.log');
   try {
     fs.appendFileSync(logFile, new Date().toISOString() + ' - ' + message + '\n');
@@ -60,16 +59,13 @@ function listDir(dir, indent = '') {
   try {
     if (!fs.existsSync(dir)) return `${indent}[NOT FOUND: ${dir}]`;
     const items = fs.readdirSync(dir);
-    return items.map(item => {
+    return items.slice(0, 50).map(item => {
       const itemPath = path.join(dir, item);
       try {
         const isDir = fs.statSync(itemPath).isDirectory();
-        if (isDir) {
-          return `${indent}[DIR] ${item}`;
-        }
-        return `${indent}${item}`;
+        return `${indent}${isDir ? '[DIR] ' : ''}${item}`;
       } catch (e) {
-        return `${indent}${item} (error: ${e.message})`;
+        return `${indent}${item} (error)`;
       }
     }).join('\n');
   } catch (e) {
@@ -83,18 +79,16 @@ function startNextServer() {
   log('=== Starting Next.js Server ===');
   log('isPackaged: ' + app.isPackaged);
   log('resourcesPath: ' + process.resourcesPath);
-  log('appPath: ' + app.getAppPath());
-  log('__dirname: ' + __dirname);
   
   const isProd = app.isPackaged;
   let nodeExePath, serverPath, standalonePath;
   
   if (isProd) {
-    // Node from extraResources
+    // Node from extraResources -> resources/node/
     nodeExePath = path.join(process.resourcesPath, 'node', 'node.exe');
     
-    // Standalone from asarUnpack
-    standalonePath = path.join(process.resourcesPath, 'app.asar.unpacked', '.next', 'standalone');
+    // Standalone from extraResources -> resources/standalone/
+    standalonePath = path.join(process.resourcesPath, 'standalone');
     serverPath = path.join(standalonePath, 'server.js');
     
     log('\n--- Checking paths ---');
@@ -102,20 +96,22 @@ function startNextServer() {
     log('standalonePath: ' + standalonePath + ' -> exists: ' + fs.existsSync(standalonePath));
     log('serverPath: ' + serverPath + ' -> exists: ' + fs.existsSync(serverPath));
     
+    // Check node_modules in standalone
+    const nodeModulesPath = path.join(standalonePath, 'node_modules');
+    log('node_modules: ' + nodeModulesPath + ' -> exists: ' + fs.existsSync(nodeModulesPath));
+    
+    if (fs.existsSync(nodeModulesPath)) {
+      log('\n--- node_modules contents (first 20) ---');
+      const nm = fs.readdirSync(nodeModulesPath).slice(0, 20);
+      log(nm.join('\n'));
+    }
+    
     log('\n--- Resources contents ---');
     log(listDir(process.resourcesPath));
     
-    log('\n--- app.asar.unpacked contents ---');
-    const unpackedPath = path.join(process.resourcesPath, 'app.asar.unpacked');
-    if (fs.existsSync(unpackedPath)) {
-      log(listDir(unpackedPath));
-      log('\n--- .next contents (if exists) ---');
-      const nextPath = path.join(unpackedPath, '.next');
-      if (fs.existsSync(nextPath)) {
-        log(listDir(nextPath));
-      }
-    } else {
-      log('app.asar.unpacked not found');
+    log('\n--- Standalone contents ---');
+    if (fs.existsSync(standalonePath)) {
+      log(listDir(standalonePath));
     }
     
     // Check if node exists
@@ -225,14 +221,13 @@ function showError(title, message) {
   const errorHtml = `
     <html>
       <head><style>
-        body{font-family:Consolas,monospace;padding:20px;background:#1a1a1a;color:#fff;}
+        body{font-family:Consolas,monospace;padding:20px;background:#1a1a1a;color:#fff;font-size:12px;}
         h1{color:#ff6b6b;}
-        pre{background:#2a2a2a;padding:15px;overflow:auto;white-space:pre-wrap;word-wrap:break-word;}
+        pre{background:#2a2a2a;padding:15px;overflow:auto;white-space:pre-wrap;word-wrap:break-word;max-height:70vh;}
       </style></head>
       <body>
         <h1>${title}</h1>
         <pre>${message}</pre>
-        <p><small>Log saved to: ${logFile}</small></p>
       </body>
     </html>
   `;
