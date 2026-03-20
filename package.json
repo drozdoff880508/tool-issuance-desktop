@@ -98,6 +98,10 @@
       {
         "from": ".env",
         "to": "standalone/.env"
+      },
+      {
+        "from": "db",
+        "to": "standalone/db"
       }
     ],
     "win": {
