@@ -20,20 +20,16 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install dependencies in app folder
-        working-directory: ./app
+      - name: Install dependencies
         run: npm install
 
       - name: Generate Prisma Client
-        working-directory: ./app
         run: npx prisma generate
 
       - name: Build Next.js app
-        working-directory: ./app
         run: npm run build
 
       - name: Build Electron app (portable)
-        working-directory: ./app
         run: npm run electron:build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -42,5 +38,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: portable-exe
-          path: app/dist/*.exe
+          path: dist/*.exe
           retention-days: 30
