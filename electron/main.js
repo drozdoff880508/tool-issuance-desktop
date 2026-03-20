@@ -47,21 +47,49 @@ function createWindow() {
   startNextServer();
 }
 
+function log(message) {
+  console.log(message);
+  // Also write to a log file for debugging
+  const logFile = path.join(app.getPath('temp'), 'tool-issuance-debug.log');
+  try {
+    fs.appendFileSync(logFile, new Date().toISOString() + ' - ' + message + '\n');
+  } catch (e) {}
+}
+
+function listDir(dir, indent = '') {
+  try {
+    if (!fs.existsSync(dir)) return `${indent}[NOT FOUND: ${dir}]`;
+    const items = fs.readdirSync(dir);
+    return items.map(item => {
+      const itemPath = path.join(dir, item);
+      try {
+        const isDir = fs.statSync(itemPath).isDirectory();
+        if (isDir) {
+          return `${indent}[DIR] ${item}`;
+        }
+        return `${indent}${item}`;
+      } catch (e) {
+        return `${indent}${item} (error: ${e.message})`;
+      }
+    }).join('\n');
+  } catch (e) {
+    return `${indent}Error: ${e.message}`;
+  }
+}
+
 function startNextServer() {
   const port = 3000;
   
-  // Get the correct paths
-  const isProd = app.isPackaged;
+  log('=== Starting Next.js Server ===');
+  log('isPackaged: ' + app.isPackaged);
+  log('resourcesPath: ' + process.resourcesPath);
+  log('appPath: ' + app.getAppPath());
+  log('__dirname: ' + __dirname);
   
+  const isProd = app.isPackaged;
   let nodeExePath, serverPath, standalonePath;
   
   if (isProd) {
-    // Production paths
-    // asarUnpack extracts to app.asar.unpacked
-    // extraResources extracts to resources/
-    
-    const appPath = app.getAppPath(); // points to app.asar
-    
     // Node from extraResources
     nodeExePath = path.join(process.resourcesPath, 'node', 'node.exe');
     
@@ -69,42 +97,45 @@ function startNextServer() {
     standalonePath = path.join(process.resourcesPath, 'app.asar.unpacked', '.next', 'standalone');
     serverPath = path.join(standalonePath, 'server.js');
     
-    console.log('=== Debug Info ===');
-    console.log('resourcesPath:', process.resourcesPath);
-    console.log('appPath:', appPath);
-    console.log('nodeExePath:', nodeExePath);
-    console.log('standalonePath:', standalonePath);
-    console.log('node exists:', fs.existsSync(nodeExePath));
-    console.log('standalone exists:', fs.existsSync(standalonePath));
-    console.log('server exists:', fs.existsSync(serverPath));
+    log('\n--- Checking paths ---');
+    log('nodeExePath: ' + nodeExePath + ' -> exists: ' + fs.existsSync(nodeExePath));
+    log('standalonePath: ' + standalonePath + ' -> exists: ' + fs.existsSync(standalonePath));
+    log('serverPath: ' + serverPath + ' -> exists: ' + fs.existsSync(serverPath));
     
-    // List contents for debugging
-    if (fs.existsSync(process.resourcesPath)) {
-      console.log('Resources contents:', fs.readdirSync(process.resourcesPath));
-    }
+    log('\n--- Resources contents ---');
+    log(listDir(process.resourcesPath));
+    
+    log('\n--- app.asar.unpacked contents ---');
     const unpackedPath = path.join(process.resourcesPath, 'app.asar.unpacked');
     if (fs.existsSync(unpackedPath)) {
-      console.log('Unpacked contents:', fs.readdirSync(unpackedPath));
+      log(listDir(unpackedPath));
+      log('\n--- .next contents (if exists) ---');
+      const nextPath = path.join(unpackedPath, '.next');
+      if (fs.existsSync(nextPath)) {
+        log(listDir(nextPath));
+      }
+    } else {
+      log('app.asar.unpacked not found');
     }
-    console.log('==================');
+    
+    // Check if node exists
+    if (!fs.existsSync(nodeExePath)) {
+      showError('Node.js not found', 
+        `Path: ${nodeExePath}\n\nResources:\n${listDir(process.resourcesPath)}`);
+      return;
+    }
+
+    // Check if server exists
+    if (!fs.existsSync(serverPath)) {
+      showError('Server not found', 
+        `Path: ${serverPath}\n\nStandalone dir:\n${fs.existsSync(standalonePath) ? listDir(standalonePath) : 'Not found'}`);
+      return;
+    }
   } else {
-    // Development paths
     const appPath = path.join(__dirname, '..');
     nodeExePath = path.join(appPath, 'node', 'node.exe');
     standalonePath = path.join(appPath, '.next', 'standalone');
     serverPath = path.join(standalonePath, 'server.js');
-  }
-
-  // Check if node exists
-  if (!fs.existsSync(nodeExePath)) {
-    showError('Node.js not found', `Expected at: ${nodeExePath}`);
-    return;
-  }
-
-  // Check if server exists
-  if (!fs.existsSync(serverPath)) {
-    showError('Server not found', `Expected at: ${serverPath}`);
-    return;
   }
 
   // Set environment variables
@@ -115,59 +146,93 @@ function startNextServer() {
     NODE_ENV: 'production'
   };
 
-  // Spawn Next.js server using bundled Node.js
+  log('\n--- Spawning server ---');
+  log('Node: ' + nodeExePath);
+  log('Server: ' + serverPath);
+  log('CWD: ' + standalonePath);
+  
+  // Spawn Next.js server
   nextProcess = spawn(nodeExePath, [serverPath], {
     cwd: standalonePath,
     env: env,
     stdio: ['ignore', 'pipe', 'pipe']
   });
 
+  let serverOutput = '';
+  let serverError = '';
+
   nextProcess.on('error', (err) => {
-    console.error('Failed to start server:', err);
-    showError('Error starting server', err.message);
+    log('Failed to spawn: ' + err.message);
+    showError('Error starting server', err.message + '\n\n' + serverOutput + '\n' + serverError);
   });
 
   nextProcess.stdout.on('data', (data) => {
-    console.log('Server:', data.toString());
+    const msg = data.toString();
+    serverOutput += msg;
+    log('Server stdout: ' + msg);
   });
 
   nextProcess.stderr.on('data', (data) => {
-    console.error('Server error:', data.toString());
+    const msg = data.toString();
+    serverError += msg;
+    log('Server stderr: ' + msg);
   });
 
   nextProcess.on('close', (code) => {
-    console.log('Server closed with code:', code);
+    log('Server closed with code: ' + code);
+    if (code !== 0) {
+      showError('Server crashed', 
+        `Exit code: ${code}\n\nOutput:\n${serverOutput}\n\nError:\n${serverError}`);
+    }
   });
 
-  // Wait for server to start then load the page
+  // Wait for server to start
   let attempts = 0;
-  const maxAttempts = 30;
+  const maxAttempts = 40;
   
   const checkServer = () => {
     attempts++;
+    log('Checking server, attempt ' + attempts);
+    
     const http = require('http');
     const req = http.get(`http://localhost:${port}`, (res) => {
+      log('Server responded with status: ' + res.statusCode);
       mainWindow.loadURL(`http://localhost:${port}`);
     });
-    req.on('error', () => {
+    req.on('error', (err) => {
+      log('Check failed: ' + err.message);
       if (attempts < maxAttempts) {
         setTimeout(checkServer, 500);
       } else {
-        showError('Server timeout', `Server did not start after ${maxAttempts} attempts`);
+        showError('Server timeout', 
+          `Server did not respond after ${maxAttempts} attempts\n\nServer output:\n${serverOutput}\n\nServer error:\n${serverError}`);
       }
+    });
+    req.setTimeout(2000, () => {
+      req.destroy();
     });
   };
   
-  setTimeout(checkServer, 2000);
+  setTimeout(checkServer, 3000);
 }
 
 function showError(title, message) {
+  const logFile = path.join(app.getPath('temp'), 'tool-issuance-error.log');
+  try {
+    fs.writeFileSync(logFile, `${title}\n\n${message}`);
+  } catch (e) {}
+  
   const errorHtml = `
     <html>
-      <head><style>body{font-family:Arial;padding:20px;} h1{color:red;}</style></head>
+      <head><style>
+        body{font-family:Consolas,monospace;padding:20px;background:#1a1a1a;color:#fff;}
+        h1{color:#ff6b6b;}
+        pre{background:#2a2a2a;padding:15px;overflow:auto;white-space:pre-wrap;word-wrap:break-word;}
+      </style></head>
       <body>
         <h1>${title}</h1>
         <pre>${message}</pre>
+        <p><small>Log saved to: ${logFile}</small></p>
       </body>
     </html>
   `;
