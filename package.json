@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
+    "postbuild": "node scripts/fix-standalone.js",
     "start": "next start -p 3000",
     "lint": "eslint .",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
@@ -70,23 +71,34 @@
       "output": "dist"
     },
     "files": [
-      ".next/standalone/**/*",
-      ".next/static/**/*",
-      "public/**/*",
-      "prisma/**/*",
-      ".env",
       "electron/**/*",
-      "node/**/*",
-      "node_modules/**/*",
       "package.json",
-      "!node_modules/electron/dist/**/*",
-      "!node_modules/@prisma/engines/**/*",
-      "!node_modules/prisma/build/**/*"
+      "!node_modules/**/*"
     ],
     "extraResources": [
       {
         "from": "node",
         "to": "node"
+      },
+      {
+        "from": ".next/standalone",
+        "to": "standalone"
+      },
+      {
+        "from": ".next/static",
+        "to": "standalone/.next/static"
+      },
+      {
+        "from": "public",
+        "to": "standalone/public"
+      },
+      {
+        "from": "prisma",
+        "to": "standalone/prisma"
+      },
+      {
+        "from": ".env",
+        "to": "standalone/.env"
       }
     ],
     "win": {
@@ -95,11 +107,6 @@
     "portable": {
       "artifactName": "ToolIssuance-Portable.exe"
     },
-    "asar": true,
-    "asarUnpack": [
-      ".next/**/*",
-      "node/**/*",
-      "prisma/**/*"
-    ]
+    "asar": true
   }
 }
