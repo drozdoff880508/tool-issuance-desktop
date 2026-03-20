@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
+const fs = require('fs');
 
 let mainWindow;
 let nextProcess;
@@ -50,30 +51,68 @@ function startNextServer() {
   const port = 3000;
   
   // Get the correct paths
-  let appPath;
-  let nodePath;
-  let serverPath;
+  const isProd = app.isPackaged;
   
-  if (app.isPackaged) {
-    // Production: use resources path
-    appPath = path.join(process.resourcesPath, 'app');
-    nodePath = path.join(process.resourcesPath, 'node', 'node.exe');
-    serverPath = path.join(appPath, '.next', 'standalone', 'server.js');
+  let nodeExePath, serverPath, standalonePath;
+  
+  if (isProd) {
+    // Production: use extraResources paths
+    // extraResources copies:
+    // - node/ -> resources/node/
+    // - .next/standalone -> resources/standalone/
+    
+    nodeExePath = path.join(process.resourcesPath, 'node', 'node.exe');
+    standalonePath = path.join(process.resourcesPath, 'standalone');
+    serverPath = path.join(standalonePath, 'server.js');
   } else {
     // Development
-    appPath = path.join(__dirname, '..');
-    nodePath = path.join(appPath, 'node', 'node.exe');
-    serverPath = path.join(appPath, '.next', 'standalone', 'server.js');
+    const appPath = path.join(__dirname, '..');
+    nodeExePath = path.join(appPath, 'node', 'node.exe');
+    standalonePath = path.join(appPath, '.next', 'standalone');
+    serverPath = path.join(standalonePath, 'server.js');
   }
 
-  console.log('App path:', appPath);
-  console.log('Node path:', nodePath);
-  console.log('Server path:', serverPath);
+  console.log('=== Path Debug Info ===');
+  console.log('isPackaged:', isProd);
+  console.log('resourcesPath:', process.resourcesPath);
+  console.log('nodeExePath:', nodeExePath);
+  console.log('standalonePath:', standalonePath);
+  console.log('serverPath:', serverPath);
+  console.log('node exists:', fs.existsSync(nodeExePath));
+  console.log('server exists:', fs.existsSync(serverPath));
+  console.log('======================');
 
-  // Check if node exists
-  if (!require('fs').existsSync(nodePath)) {
-    console.error('Node.js not found at:', nodePath);
-    mainWindow.loadURL(`data:text/html,<h1>Error: Node.js not found</h1><p>Expected at: ${nodePath}</p>`);
+  // Show error if node not found
+  if (!fs.existsSync(nodeExePath)) {
+    const errorHtml = `
+      <html>
+        <body style="font-family: Arial; padding: 20px;">
+          <h1 style="color: red;">Error: Node.js not found</h1>
+          <p>Expected location: ${nodeExePath}</p>
+          <p>Resources path: ${process.resourcesPath}</p>
+          <h3>Files in resources:</h3>
+          <pre>${listDir(process.resourcesPath)}</pre>
+        </body>
+      </html>
+    `;
+    mainWindow.loadURL(`data:text/html,${encodeURIComponent(errorHtml)}`);
+    return;
+  }
+
+  // Show error if server not found
+  if (!fs.existsSync(serverPath)) {
+    const errorHtml = `
+      <html>
+        <body style="font-family: Arial; padding: 20px;">
+          <h1 style="color: red;">Error: Server not found</h1>
+          <p>Expected location: ${serverPath}</p>
+          <p>Standalone path: ${standalonePath}</p>
+          <h3>Files in standalone:</h3>
+          <pre>${fs.existsSync(standalonePath) ? listDir(standalonePath) : 'Directory not found'}</pre>
+        </body>
+      </html>
+    `;
+    mainWindow.loadURL(`data:text/html,${encodeURIComponent(errorHtml)}`);
     return;
   }
 
@@ -86,23 +125,31 @@ function startNextServer() {
   };
 
   // Spawn Next.js server using bundled Node.js
-  nextProcess = spawn(nodePath, [serverPath], {
-    cwd: path.join(appPath, '.next', 'standalone'),
+  nextProcess = spawn(nodeExePath, [serverPath], {
+    cwd: standalonePath,
     env: env,
     stdio: ['ignore', 'pipe', 'pipe']
   });
 
   nextProcess.on('error', (err) => {
     console.error('Failed to start server:', err);
-    mainWindow.loadURL(`data:text/html,<h1>Error starting server</h1><p>${err.message}</p>`);
+    const errorHtml = `
+      <html>
+        <body style="font-family: Arial; padding: 20px;">
+          <h1 style="color: red;">Error starting server</h1>
+          <p>${err.message}</p>
+        </body>
+      </html>
+    `;
+    mainWindow.loadURL(`data:text/html,${encodeURIComponent(errorHtml)}`);
   });
 
   nextProcess.stdout.on('data', (data) => {
-    console.log('Server:', data.toString());
+    console.log('Server stdout:', data.toString());
   });
 
   nextProcess.stderr.on('data', (data) => {
-    console.error('Server error:', data.toString());
+    console.error('Server stderr:', data.toString());
   });
 
   nextProcess.on('close', (code) => {
@@ -110,12 +157,34 @@ function startNextServer() {
   });
 
   // Wait for server to start then load the page
-  setTimeout(() => {
-    mainWindow.loadURL(`http://localhost:${port}`).catch(err => {
-      console.error('Failed to load page:', err);
-      mainWindow.loadURL(`data:text/html,<h1>Failed to connect to server</h1><p>Error: ${err.message}</p><p>Port: ${port}</p><p>Server should be running...</p>`);
+  const checkServer = () => {
+    const http = require('http');
+    const req = http.get(`http://localhost:${port}`, (res) => {
+      if (res.statusCode === 200 || res.statusCode === 302) {
+        mainWindow.loadURL(`http://localhost:${port}`);
+      }
     });
-  }, 4000);
+    req.on('error', () => {
+      // Server not ready yet, try again
+      setTimeout(checkServer, 500);
+    });
+  };
+  
+  // Start checking after 2 seconds
+  setTimeout(checkServer, 2000);
+}
+
+function listDir(dir) {
+  try {
+    const items = fs.readdirSync(dir);
+    return items.map(item => {
+      const itemPath = path.join(dir, item);
+      const isDir = fs.statSync(itemPath).isDirectory();
+      return isDir ? `[DIR] ${item}` : `${item}`;
+    }).join('\n');
+  } catch (e) {
+    return `Error: ${e.message}`;
+  }
 }
 
 app.whenReady().then(createWindow);
