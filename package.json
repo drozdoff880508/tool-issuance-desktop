@@ -9,8 +9,7 @@
     "start": "next start -p 3000",
     "lint": "eslint .",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "electron:build": "npm run build && electron-builder --win portable",
-    "postinstall": "node scripts/download-node.js"
+    "electron:build": "npm run build && electron-builder --win portable"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.1.1",
@@ -71,35 +70,58 @@
       "output": "dist"
     },
     "files": [
-      ".next/**/*",
+      ".next/standalone/**/*",
+      ".next/static/**/*",
       "public/**/*",
       "prisma/**/*",
       ".env",
       "electron/**/*",
-      "node/**/*",
       "node_modules/**/*",
       "package.json",
+      "!node_modules/electron/dist/**/*",
       "!node_modules/@prisma/engines/**/*",
-      "!node_modules/prisma/build/**/*",
-      "!node_modules/electron/dist/**/*"
+      "!node_modules/prisma/build/**/*"
     ],
     "extraResources": [
       {
         "from": "node",
         "to": "node",
         "filter": ["**/*"]
+      },
+      {
+        "from": ".next/standalone",
+        "to": "standalone",
+        "filter": ["**/*"]
+      },
+      {
+        "from": ".next/static",
+        "to": "standalone/.next/static",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "public",
+        "to": "standalone/public",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "prisma",
+        "to": "standalone/prisma",
+        "filter": ["**/*"]
+      },
+      {
+        "from": ".env",
+        "to": "standalone/.env"
       }
     ],
     "win": {
-      "target": "portable",
-      "icon": "public/icon.ico"
+      "target": "portable"
     },
     "portable": {
       "artifactName": "ToolIssuance-Portable.exe"
     },
+    "asar": true,
     "asarUnpack": [
-      ".next/**/*",
-      "node/**/*"
+      "electron/**/*"
     ]
   }
 }
