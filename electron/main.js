@@ -56,63 +56,54 @@ function startNextServer() {
   let nodeExePath, serverPath, standalonePath;
   
   if (isProd) {
-    // Production: use extraResources paths
-    // extraResources copies:
-    // - node/ -> resources/node/
-    // - .next/standalone -> resources/standalone/
+    // Production paths
+    // asarUnpack extracts to app.asar.unpacked
+    // extraResources extracts to resources/
     
+    const appPath = app.getAppPath(); // points to app.asar
+    
+    // Node from extraResources
     nodeExePath = path.join(process.resourcesPath, 'node', 'node.exe');
-    standalonePath = path.join(process.resourcesPath, 'standalone');
+    
+    // Standalone from asarUnpack
+    standalonePath = path.join(process.resourcesPath, 'app.asar.unpacked', '.next', 'standalone');
     serverPath = path.join(standalonePath, 'server.js');
+    
+    console.log('=== Debug Info ===');
+    console.log('resourcesPath:', process.resourcesPath);
+    console.log('appPath:', appPath);
+    console.log('nodeExePath:', nodeExePath);
+    console.log('standalonePath:', standalonePath);
+    console.log('node exists:', fs.existsSync(nodeExePath));
+    console.log('standalone exists:', fs.existsSync(standalonePath));
+    console.log('server exists:', fs.existsSync(serverPath));
+    
+    // List contents for debugging
+    if (fs.existsSync(process.resourcesPath)) {
+      console.log('Resources contents:', fs.readdirSync(process.resourcesPath));
+    }
+    const unpackedPath = path.join(process.resourcesPath, 'app.asar.unpacked');
+    if (fs.existsSync(unpackedPath)) {
+      console.log('Unpacked contents:', fs.readdirSync(unpackedPath));
+    }
+    console.log('==================');
   } else {
-    // Development
+    // Development paths
     const appPath = path.join(__dirname, '..');
     nodeExePath = path.join(appPath, 'node', 'node.exe');
     standalonePath = path.join(appPath, '.next', 'standalone');
     serverPath = path.join(standalonePath, 'server.js');
   }
 
-  console.log('=== Path Debug Info ===');
-  console.log('isPackaged:', isProd);
-  console.log('resourcesPath:', process.resourcesPath);
-  console.log('nodeExePath:', nodeExePath);
-  console.log('standalonePath:', standalonePath);
-  console.log('serverPath:', serverPath);
-  console.log('node exists:', fs.existsSync(nodeExePath));
-  console.log('server exists:', fs.existsSync(serverPath));
-  console.log('======================');
-
-  // Show error if node not found
+  // Check if node exists
   if (!fs.existsSync(nodeExePath)) {
-    const errorHtml = `
-      <html>
-        <body style="font-family: Arial; padding: 20px;">
-          <h1 style="color: red;">Error: Node.js not found</h1>
-          <p>Expected location: ${nodeExePath}</p>
-          <p>Resources path: ${process.resourcesPath}</p>
-          <h3>Files in resources:</h3>
-          <pre>${listDir(process.resourcesPath)}</pre>
-        </body>
-      </html>
-    `;
-    mainWindow.loadURL(`data:text/html,${encodeURIComponent(errorHtml)}`);
+    showError('Node.js not found', `Expected at: ${nodeExePath}`);
     return;
   }
 
-  // Show error if server not found
+  // Check if server exists
   if (!fs.existsSync(serverPath)) {
-    const errorHtml = `
-      <html>
-        <body style="font-family: Arial; padding: 20px;">
-          <h1 style="color: red;">Error: Server not found</h1>
-          <p>Expected location: ${serverPath}</p>
-          <p>Standalone path: ${standalonePath}</p>
-          <h3>Files in standalone:</h3>
-          <pre>${fs.existsSync(standalonePath) ? listDir(standalonePath) : 'Directory not found'}</pre>
-        </body>
-      </html>
-    `;
-    mainWindow.loadURL(`data:text/html,${encodeURIComponent(errorHtml)}`);
+    showError('Server not found', `Expected at: ${serverPath}`);
     return;
   }
 
@@ -133,58 +124,54 @@ function startNextServer() {
 
   nextProcess.on('error', (err) => {
     console.error('Failed to start server:', err);
-    const errorHtml = `
-      <html>
-        <body style="font-family: Arial; padding: 20px;">
-          <h1 style="color: red;">Error starting server</h1>
-          <p>${err.message}</p>
-        </body>
-      </html>
-    `;
-    mainWindow.loadURL(`data:text/html,${encodeURIComponent(errorHtml)}`);
+    showError('Error starting server', err.message);
   });
 
   nextProcess.stdout.on('data', (data) => {
-    console.log('Server stdout:', data.toString());
+    console.log('Server:', data.toString());
   });
 
   nextProcess.stderr.on('data', (data) => {
-    console.error('Server stderr:', data.toString());
+    console.error('Server error:', data.toString());
   });
 
   nextProcess.on('close', (code) => {
-    console.log('Server process closed with code:', code);
+    console.log('Server closed with code:', code);
   });
 
   // Wait for server to start then load the page
+  let attempts = 0;
+  const maxAttempts = 30;
+  
   const checkServer = () => {
+    attempts++;
     const http = require('http');
     const req = http.get(`http://localhost:${port}`, (res) => {
-      if (res.statusCode === 200 || res.statusCode === 302) {
-        mainWindow.loadURL(`http://localhost:${port}`);
-      }
+      mainWindow.loadURL(`http://localhost:${port}`);
     });
     req.on('error', () => {
-      // Server not ready yet, try again
-      setTimeout(checkServer, 500);
+      if (attempts < maxAttempts) {
+        setTimeout(checkServer, 500);
+      } else {
+        showError('Server timeout', `Server did not start after ${maxAttempts} attempts`);
+      }
     });
   };
   
-  // Start checking after 2 seconds
   setTimeout(checkServer, 2000);
 }
 
-function listDir(dir) {
-  try {
-    const items = fs.readdirSync(dir);
-    return items.map(item => {
-      const itemPath = path.join(dir, item);
-      const isDir = fs.statSync(itemPath).isDirectory();
-      return isDir ? `[DIR] ${item}` : `${item}`;
-    }).join('\n');
-  } catch (e) {
-    return `Error: ${e.message}`;
-  }
+function showError(title, message) {
+  const errorHtml = `
+    <html>
+      <head><style>body{font-family:Arial;padding:20px;} h1{color:red;}</style></head>
+      <body>
+        <h1>${title}</h1>
+        <pre>${message}</pre>
+      </body>
+    </html>
+  `;
+  mainWindow.loadURL(`data:text/html,${encodeURIComponent(errorHtml)}`);
 }
 
 app.whenReady().then(createWindow);
