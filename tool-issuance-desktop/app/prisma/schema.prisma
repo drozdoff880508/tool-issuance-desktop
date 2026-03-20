@@ -1,0 +1,86 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Сотрудники
+model Employee {
+  id              String   @id @default(cuid())
+  lastName        String   // Фамилия
+  firstName       String   // Имя
+  middleName      String?  // Отчество
+  personnelNumber String   @unique // Табельный номер
+  department      String?  // Цех/отдел
+  qrCode          String   @unique // Уникальный QR-код
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  issuances       Issuance[]
+}
+
+// Категории инструмента
+model ToolCategory {
+  id          String   @id @default(cuid())
+  name        String   @unique // "Обычный", "Особо ценный"
+  description String?
+  tools       Tool[]
+}
+
+// Инструмент
+model Tool {
+  id              String   @id @default(cuid())
+  name            String   // Название
+  inventoryNumber String   @unique // Инвентарный номер
+  categoryId      String
+  category        ToolCategory @relation(fields: [categoryId], references: [id])
+  qrCode          String   @unique // Уникальный QR-код
+  status          ToolStatus @default(IN_STOCK) // На складе / Выдан / Списан
+  notes           String?  // Примечания
+  createdAt       DateTime @default(now())
+  issuances       Issuance[]
+}
+
+enum ToolStatus {
+  IN_STOCK    // На складе
+  ISSUED      // Выдан
+  WRITTEN_OFF // Списан
+}
+
+// Выдачи
+model Issuance {
+  id                  String   @id @default(cuid())
+  toolId              String
+  tool                Tool     @relation(fields: [toolId], references: [id])
+  employeeId          String
+  employee            Employee @relation(fields: [employeeId], references: [id])
+  issuedAt            DateTime @default(now()) // Когда выдан
+  issuedBy            String   // Кем выдан (ID кладовщика/админа)
+  expectedReturnDate  DateTime? // Ожидаемая дата возврата
+  returnedAt          DateTime? // Фактическая дата возврата
+  returnedBy          String?  // Кем принят
+  notes               String?  // Примечания при выдаче
+  returnNotes         String?  // Примечания при возврате
+  isOverdue           Boolean  @default(false) // Просрочен ли
+}
+
+// Пользователи системы (кладовщики, админы)
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String   // Хэшированный
+  role      UserRole @default(STOREKEEPER)
+  name      String   // ФИО для отображения
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+enum UserRole {
+  STOREKEEPER // Кладовщик
+  ADMIN       // Администратор
+}

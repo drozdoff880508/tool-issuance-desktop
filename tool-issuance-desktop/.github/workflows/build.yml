@@ -35,10 +35,6 @@ jobs:
         working-directory: ./app
         run: npx prisma db push
 
-      - name: Seed database
-        working-directory: ./app
-        run: node prisma/seed.ts
-
       - name: Build Next.js app
         working-directory: ./app
         run: npm run build
