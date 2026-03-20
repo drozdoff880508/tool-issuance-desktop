@@ -2,9 +2,7 @@ name: Build Portable EXE
 
 on:
   push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    branches: [main, master]
   workflow_dispatch:
 
 jobs:
@@ -36,6 +34,10 @@ jobs:
       - name: Initialize database
         working-directory: ./app
         run: npx prisma db push
+
+      - name: Seed database
+        working-directory: ./app
+        run: node prisma/seed.ts
 
       - name: Build Next.js app
         working-directory: ./app
