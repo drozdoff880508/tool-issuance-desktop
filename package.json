@@ -76,6 +76,7 @@
       "prisma/**/*",
       ".env",
       "electron/**/*",
+      "node/**/*",
       "node_modules/**/*",
       "package.json",
       "!node_modules/electron/dist/**/*",
@@ -85,32 +86,7 @@
     "extraResources": [
       {
         "from": "node",
-        "to": "node",
-        "filter": ["**/*"]
-      },
-      {
-        "from": ".next/standalone",
-        "to": "standalone",
-        "filter": ["**/*"]
-      },
-      {
-        "from": ".next/static",
-        "to": "standalone/.next/static",
-        "filter": ["**/*"]
-      },
-      {
-        "from": "public",
-        "to": "standalone/public",
-        "filter": ["**/*"]
-      },
-      {
-        "from": "prisma",
-        "to": "standalone/prisma",
-        "filter": ["**/*"]
-      },
-      {
-        "from": ".env",
-        "to": "standalone/.env"
+        "to": "node"
       }
     ],
     "win": {
@@ -121,7 +97,9 @@
     },
     "asar": true,
     "asarUnpack": [
-      "electron/**/*"
+      ".next/**/*",
+      "node/**/*",
+      "prisma/**/*"
     ]
   }
 }
