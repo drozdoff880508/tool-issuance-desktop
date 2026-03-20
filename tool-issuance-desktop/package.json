@@ -1,0 +1,36 @@
+{
+  "name": "tool-issuance-system",
+  "version": "1.0.0",
+  "description": "Система выдачи инструмента",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win portable"
+  },
+  "author": "Author",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.toolissuance.app",
+    "productName": "ToolIssuance",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": ["portable"]
+    },
+    "files": [
+      "main.js"
+    ],
+    "extraResources": [
+      {
+        "from": "app",
+        "to": "app"
+      }
+    ],
+    "asar": false
+  }
+}

@@ -1,0 +1,57 @@
+name: Build Portable EXE
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install app dependencies
+        working-directory: ./app
+        run: npm install
+
+      - name: Generate Prisma Client
+        working-directory: ./app
+        run: npx prisma generate
+
+      - name: Create db directory
+        working-directory: ./app
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path db
+
+      - name: Initialize database
+        working-directory: ./app
+        run: npx prisma db push
+
+      - name: Build Next.js app
+        working-directory: ./app
+        run: npm run build
+
+      - name: Install Electron dependencies
+        run: npm install
+
+      - name: Build Electron app
+        run: npx electron-builder --win portable --x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload portable EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: ToolIssuance-Portable
+          path: dist/*.exe
+          retention-days: 30
