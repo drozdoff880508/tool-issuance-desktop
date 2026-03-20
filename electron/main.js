@@ -1,6 +1,6 @@
 const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 
 let mainWindow;
@@ -21,120 +21,78 @@ function createWindow() {
     mainWindow = null;
   });
 
-  // Create application menu
   const menu = Menu.buildFromTemplate([
-    {
-      label: 'Файл',
-      submenu: [
-        { role: 'quit', label: 'Выход' }
-      ]
-    },
-    {
-      label: 'Вид',
-      submenu: [
-        { role: 'reload', label: 'Обновить' },
-        { role: 'toggledevtools', label: 'Инструменты разработчика' },
-        { type: 'separator' },
-        { role: 'resetzoom', label: 'Сбросить масштаб' },
-        { role: 'zoomin', label: 'Увеличить' },
-        { role: 'zoomout', label: 'Уменьшить' }
-      ]
-    }
+    { label: 'Файл', submenu: [{ role: 'quit', label: 'Выход' }] },
+    { label: 'Вид', submenu: [
+      { role: 'reload', label: 'Обновить' },
+      { role: 'toggledevtools', label: 'DevTools' }
+    ]}
   ]);
   Menu.setApplicationMenu(menu);
 
-  // Start server and load the app
   startNextServer();
 }
 
-function log(message) {
-  console.log(message);
-  const logFile = path.join(app.getPath('temp'), 'tool-issuance-debug.log');
+function log(msg) {
+  console.log(msg);
   try {
-    fs.appendFileSync(logFile, new Date().toISOString() + ' - ' + message + '\n');
-  } catch (e) {}
-}
-
-function listDir(dir, indent = '') {
-  try {
-    if (!fs.existsSync(dir)) return `${indent}[NOT FOUND: ${dir}]`;
-    const items = fs.readdirSync(dir);
-    return items.slice(0, 50).map(item => {
-      const itemPath = path.join(dir, item);
-      try {
-        const isDir = fs.statSync(itemPath).isDirectory();
-        return `${indent}${isDir ? '[DIR] ' : ''}${item}`;
-      } catch (e) {
-        return `${indent}${item} (error)`;
-      }
-    }).join('\n');
-  } catch (e) {
-    return `${indent}Error: ${e.message}`;
-  }
+    fs.appendFileSync(path.join(app.getPath('temp'), 'tool-issuance.log'), msg + '\n');
+  } catch(e) {}
 }
 
 function startNextServer() {
   const port = 3000;
+  const isProd = app.isPackaged;
   
-  log('=== Starting Next.js Server ===');
-  log('isPackaged: ' + app.isPackaged);
+  log('=== Tool Issuance System ===');
+  log('isPackaged: ' + isProd);
   log('resourcesPath: ' + process.resourcesPath);
   
-  const isProd = app.isPackaged;
-  let nodeExePath, serverPath, standalonePath;
+  let nodeExe, serverJs, workDir;
   
   if (isProd) {
-    // Node from extraResources -> resources/node/
-    nodeExePath = path.join(process.resourcesPath, 'node', 'node.exe');
+    nodeExe = path.join(process.resourcesPath, 'node', 'node.exe');
+    workDir = path.join(process.resourcesPath, 'standalone');
+    serverJs = path.join(workDir, 'server.js');
     
-    // Standalone from extraResources -> resources/standalone/
-    standalonePath = path.join(process.resourcesPath, 'standalone');
-    serverPath = path.join(standalonePath, 'server.js');
+    log('\n--- Path Check ---');
+    log('nodeExe: ' + nodeExe + ' = ' + fs.existsSync(nodeExe));
+    log('workDir: ' + workDir + ' = ' + fs.existsSync(workDir));
+    log('serverJs: ' + serverJs + ' = ' + fs.existsSync(serverJs));
     
-    log('\n--- Checking paths ---');
-    log('nodeExePath: ' + nodeExePath + ' -> exists: ' + fs.existsSync(nodeExePath));
-    log('standalonePath: ' + standalonePath + ' -> exists: ' + fs.existsSync(standalonePath));
-    log('serverPath: ' + serverPath + ' -> exists: ' + fs.existsSync(serverPath));
+    // Проверяем db
+    const dbPath = path.join(workDir, 'db', 'custom.db');
+    log('dbPath: ' + dbPath + ' = ' + fs.existsSync(dbPath));
     
-    // Check node_modules in standalone
-    const nodeModulesPath = path.join(standalonePath, 'node_modules');
-    log('node_modules: ' + nodeModulesPath + ' -> exists: ' + fs.existsSync(nodeModulesPath));
+    // Проверяем prisma
+    const prismaPath = path.join(workDir, 'prisma', 'schema.prisma');
+    log('prismaPath: ' + prismaPath + ' = ' + fs.existsSync(prismaPath));
     
-    if (fs.existsSync(nodeModulesPath)) {
-      log('\n--- node_modules contents (first 20) ---');
-      const nm = fs.readdirSync(nodeModulesPath).slice(0, 20);
-      log(nm.join('\n'));
+    // Проверяем node_modules/.prisma
+    const prismaClient = path.join(workDir, 'node_modules', '.prisma', 'client');
+    log('prismaClient: ' + prismaClient + ' = ' + fs.existsSync(prismaClient));
+    
+    // Проверяем @prisma/engines
+    const enginesPath = path.join(workDir, 'node_modules', '@prisma', 'engines');
+    if (fs.existsSync(enginesPath)) {
+      log('engines: ' + fs.readdirSync(enginesPath).join(', '));
+    } else {
+      log('engines: NOT FOUND');
     }
     
-    log('\n--- Resources contents ---');
-    log(listDir(process.resourcesPath));
-    
-    log('\n--- Standalone contents ---');
-    if (fs.existsSync(standalonePath)) {
-      log(listDir(standalonePath));
+    if (!fs.existsSync(nodeExe)) {
+      return showError('Node.js не найден', nodeExe);
     }
-    
-    // Check if node exists
-    if (!fs.existsSync(nodeExePath)) {
-      showError('Node.js not found', 
-        `Path: ${nodeExePath}\n\nResources:\n${listDir(process.resourcesPath)}`);
-      return;
-    }
-
-    // Check if server exists
-    if (!fs.existsSync(serverPath)) {
-      showError('Server not found', 
-        `Path: ${serverPath}\n\nStandalone dir:\n${fs.existsSync(standalonePath) ? listDir(standalonePath) : 'Not found'}`);
-      return;
+    if (!fs.existsSync(serverJs)) {
+      return showError('server.js не найден', serverJs);
     }
   } else {
     const appPath = path.join(__dirname, '..');
-    nodeExePath = path.join(appPath, 'node', 'node.exe');
-    standalonePath = path.join(appPath, '.next', 'standalone');
-    serverPath = path.join(standalonePath, 'server.js');
+    nodeExe = path.join(appPath, 'node', 'node.exe');
+    workDir = path.join(appPath, '.next', 'standalone');
+    serverJs = path.join(workDir, 'server.js');
   }
 
-  // Set environment variables
   const env = {
     ...process.env,
     PORT: port.toString(),
@@ -142,117 +100,80 @@ function startNextServer() {
     NODE_ENV: 'production'
   };
 
-  log('\n--- Spawning server ---');
-  log('Node: ' + nodeExePath);
-  log('Server: ' + serverPath);
-  log('CWD: ' + standalonePath);
+  log('\n--- Starting Server ---');
+  log('Node: ' + nodeExe);
+  log('CWD: ' + workDir);
   
-  // Spawn Next.js server
-  nextProcess = spawn(nodeExePath, [serverPath], {
-    cwd: standalonePath,
+  let stdout = '';
+  let stderr = '';
+  
+  nextProcess = spawn(nodeExe, [serverJs], {
+    cwd: workDir,
     env: env,
     stdio: ['ignore', 'pipe', 'pipe']
   });
 
-  let serverOutput = '';
-  let serverError = '';
-
-  nextProcess.on('error', (err) => {
-    log('Failed to spawn: ' + err.message);
-    showError('Error starting server', err.message + '\n\n' + serverOutput + '\n' + serverError);
-  });
-
   nextProcess.stdout.on('data', (data) => {
-    const msg = data.toString();
-    serverOutput += msg;
-    log('Server stdout: ' + msg);
+    stdout += data.toString();
+    log('OUT: ' + data.toString().trim());
   });
 
   nextProcess.stderr.on('data', (data) => {
-    const msg = data.toString();
-    serverError += msg;
-    log('Server stderr: ' + msg);
+    stderr += data.toString();
+    log('ERR: ' + data.toString().trim());
+  });
+
+  nextProcess.on('error', (err) => {
+    log('SPAWN ERROR: ' + err.message);
+    showError('Ошибка запуска', err.message);
   });
 
   nextProcess.on('close', (code) => {
-    log('Server closed with code: ' + code);
-    if (code !== 0) {
-      showError('Server crashed', 
-        `Exit code: ${code}\n\nOutput:\n${serverOutput}\n\nError:\n${serverError}`);
+    log('EXIT CODE: ' + code);
+    if (code !== 0 && code !== null) {
+      showError('Сервер остановлен', 
+        'Код: ' + code + '\n\nSTDOUT:\n' + stdout + '\n\nSTDERR:\n' + stderr);
     }
   });
 
-  // Wait for server to start
+  // Ждём сервер
   let attempts = 0;
-  const maxAttempts = 40;
-  
-  const checkServer = () => {
+  const check = () => {
     attempts++;
-    log('Checking server, attempt ' + attempts);
-    
     const http = require('http');
-    const req = http.get(`http://localhost:${port}`, (res) => {
-      log('Server responded with status: ' + res.statusCode);
-      mainWindow.loadURL(`http://localhost:${port}`);
+    const req = http.get('http://localhost:' + port, (res) => {
+      log('Server ready! Status: ' + res.statusCode);
+      mainWindow.loadURL('http://localhost:' + port);
     });
-    req.on('error', (err) => {
-      log('Check failed: ' + err.message);
-      if (attempts < maxAttempts) {
-        setTimeout(checkServer, 500);
+    req.on('error', () => {
+      if (attempts < 60) {
+        setTimeout(check, 500);
       } else {
-        showError('Server timeout', 
-          `Server did not respond after ${maxAttempts} attempts\n\nServer output:\n${serverOutput}\n\nServer error:\n${serverError}`);
+        showError('Таймаут сервера', 
+          'Попыток: ' + attempts + '\n\nSTDOUT:\n' + stdout + '\n\nSTDERR:\n' + stderr);
       }
     });
-    req.setTimeout(2000, () => {
-      req.destroy();
-    });
+    req.setTimeout(2000, () => req.destroy());
   };
   
-  setTimeout(checkServer, 3000);
+  setTimeout(check, 2000);
 }
 
-function showError(title, message) {
-  const logFile = path.join(app.getPath('temp'), 'tool-issuance-error.log');
-  try {
-    fs.writeFileSync(logFile, `${title}\n\n${message}`);
-  } catch (e) {}
-  
-  const errorHtml = `
-    <html>
-      <head><style>
-        body{font-family:Consolas,monospace;padding:20px;background:#1a1a1a;color:#fff;font-size:12px;}
-        h1{color:#ff6b6b;}
-        pre{background:#2a2a2a;padding:15px;overflow:auto;white-space:pre-wrap;word-wrap:break-word;max-height:70vh;}
-      </style></head>
-      <body>
-        <h1>${title}</h1>
-        <pre>${message}</pre>
-      </body>
-    </html>
-  `;
-  mainWindow.loadURL(`data:text/html,${encodeURIComponent(errorHtml)}`);
+function showError(title, msg) {
+  const html = `<html><head><style>
+    body{font-family:Arial;padding:20px;background:#1e1e1e;color:#fff;}
+    h1{color:#f44;} pre{background:#2d2d2d;padding:15px;overflow:auto;white-space:pre-wrap;font-size:11px;}
+  </style></head><body><h1>${title}</h1><pre>${msg}</pre></body></html>`;
+  mainWindow.loadURL('data:text/html,' + encodeURIComponent(html));
 }
 
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
-  if (nextProcess) {
-    nextProcess.kill();
-  }
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
-
-app.on('activate', () => {
-  if (mainWindow === null) {
-    createWindow();
-  }
+  if (nextProcess) nextProcess.kill();
+  if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('before-quit', () => {
-  if (nextProcess) {
-    nextProcess.kill();
-  }
+  if (nextProcess) nextProcess.kill();
 });
