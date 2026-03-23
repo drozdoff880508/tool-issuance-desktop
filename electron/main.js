@@ -1,6 +1,6 @@
 const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
-const { spawn, execSync } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 
 let mainWindow;
@@ -58,14 +58,14 @@ function startNextServer() {
   
   const isProd = app.isPackaged;
   let nodeExe, serverJs, cwd;
-  let dbDir, dbPath, prismaSchemaPath;
+  let dbDir, dbPath;
   
   if (isProd) {
     nodeExe = path.join(process.resourcesPath, 'node', 'node.exe');
     cwd = path.join(process.resourcesPath, 'standalone');
     serverJs = path.join(cwd, 'server.js');
     
-    // Важное исправление: используем PORTABLE_EXECUTABLE_DIR от electron-builder
+    // Используем PORTABLE_EXECUTABLE_DIR от electron-builder
     // Это реальная папка где лежит EXE файл
     let appDir;
     if (process.env.PORTABLE_EXECUTABLE_DIR) {
@@ -77,7 +77,6 @@ function startNextServer() {
     
     dbDir = path.join(appDir, 'data');
     dbPath = path.join(dbDir, 'custom.db');
-    prismaSchemaPath = path.join(cwd, 'prisma', 'schema.prisma');
     
     log('appDir (persistent): ' + appDir);
     log('dbDir: ' + dbDir);
@@ -98,7 +97,6 @@ function startNextServer() {
     serverJs = path.join(cwd, 'server.js');
     dbDir = path.join(appPath, 'db');
     dbPath = path.join(dbDir, 'custom.db');
-    prismaSchemaPath = path.join(appPath, 'prisma', 'schema.prisma');
   }
 
   // Создаём папку для базы если нет
@@ -112,6 +110,38 @@ function startNextServer() {
   log('Absolute DB path: ' + absoluteDbPath);
   log('DB exists: ' + fs.existsSync(absoluteDbPath));
   
+  // Если базы данных нет - копируем seed базу
+  if (!fs.existsSync(absoluteDbPath)) {
+    log('Database not found, looking for seed database...');
+    
+    // Ищем seed базу в ресурсах
+    const seedDbPath = isProd 
+      ? path.join(process.resourcesPath, 'seed-db', 'seed.db')
+      : path.join(__dirname, '..', 'seed-db', 'seed.db');
+    
+    log('Seed DB path: ' + seedDbPath);
+    log('Seed DB exists: ' + fs.existsSync(seedDbPath));
+    
+    if (fs.existsSync(seedDbPath)) {
+      try {
+        // Копируем seed базу
+        fs.copyFileSync(seedDbPath, absoluteDbPath);
+        log('Seed database copied successfully to: ' + absoluteDbPath);
+        
+        // Проверяем размер
+        const stats = fs.statSync(absoluteDbPath);
+        log('Database size: ' + stats.size + ' bytes');
+      } catch (e) {
+        log('Failed to copy seed database: ' + e.message);
+        showError('Database Error', 'Failed to initialize database:\n' + e.message);
+        return;
+      }
+    } else {
+      log('WARNING: Seed database not found at ' + seedDbPath);
+      log('Application will start but may fail if database tables are missing');
+    }
+  }
+  
   const env = {
     ...process.env,
     PORT: String(port),
@@ -121,34 +151,6 @@ function startNextServer() {
   };
 
   log('DATABASE_URL: ' + env.DATABASE_URL);
-  
-  // Инициализируем базу если её нет
-  if (!fs.existsSync(absoluteDbPath)) {
-    log('Initializing database...');
-    try {
-      // Запускаем prisma db push для создания таблиц
-      const prismaCli = path.join(cwd, 'node_modules', 'prisma', 'build', 'index.js');
-      if (fs.existsSync(prismaCli)) {
-        execSync(`"${nodeExe}" "${prismaCli}" db push --skip-generate`, {
-          cwd: cwd,
-          env: env,
-          stdio: 'inherit'
-        });
-        log('Database initialized successfully');
-      } else {
-        log('Prisma CLI not found, trying alternative...');
-        // Пробуем через npx
-        execSync(`"${nodeExe}" -e "require('prisma/build').run()" db push --skip-generate`, {
-          cwd: cwd,
-          env: env,
-          stdio: 'inherit'
-        });
-      }
-    } catch (e) {
-      log('Database init error: ' + e.message);
-      // Продолжаем даже если ошибка - возможно база уже есть
-    }
-  }
   
   nextProcess = spawn(nodeExe, [serverJs], {
     cwd: cwd,

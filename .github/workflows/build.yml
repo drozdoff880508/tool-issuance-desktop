@@ -37,6 +37,29 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate
 
+      - name: Create seed database
+        shell: pwsh
+        run: |
+          Write-Host "Creating seed database with tables..."
+          
+          # Создаём папку для seed базы
+          New-Item -ItemType Directory -Force -Path ".\seed-db"
+          
+          # Устанавливаем путь к seed базе
+          $env:DATABASE_URL = "file:./seed-db/seed.db"
+          
+          Write-Host "Running prisma db push to create tables..."
+          npx prisma db push --skip-generate
+          
+          # Проверяем что база создана
+          if (Test-Path ".\seed-db\seed.db") {
+            $size = (Get-Item ".\seed-db\seed.db").Length
+            Write-Host "Seed database created successfully. Size: $size bytes"
+          } else {
+            Write-Error "Failed to create seed database"
+            exit 1
+          }
+
       - name: Build Next.js app
         run: npm run build
 

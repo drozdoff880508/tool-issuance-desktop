@@ -9,7 +9,9 @@
     "start": "next start -p 3000",
     "lint": "eslint .",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "electron:build": "electron-builder --win portable"
+    "electron:build": "electron-builder --win portable",
+    "seed:db": "node scripts/create-seed-db.js",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.1.1",
@@ -105,6 +107,10 @@
       {
         "from": ".env",
         "to": "standalone/.env"
+      },
+      {
+        "from": "seed-db",
+        "to": "seed-db"
       }
     ],
     "win": {
