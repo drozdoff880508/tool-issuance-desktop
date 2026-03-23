@@ -1,6 +1,6 @@
 const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 
 let mainWindow;
@@ -51,24 +51,35 @@ function startNextServer() {
   const port = 3000;
   
   log('=== STARTING SERVER ===');
+  log('isPackaged: ' + app.isPackaged);
+  log('PORTABLE_EXECUTABLE_DIR: ' + process.env.PORTABLE_EXECUTABLE_DIR);
+  log('exe path: ' + app.getPath('exe'));
+  log('cwd: ' + process.cwd());
   
   const isProd = app.isPackaged;
   let nodeExe, serverJs, cwd;
-  
-  // Определяем путь к базе данных - в папке с программой, а не во временной!
-  let dbDir, dbPath;
+  let dbDir, dbPath, prismaSchemaPath;
   
   if (isProd) {
     nodeExe = path.join(process.resourcesPath, 'node', 'node.exe');
     cwd = path.join(process.resourcesPath, 'standalone');
     serverJs = path.join(cwd, 'server.js');
     
-    // База данных в папке с exe файлом (постоянное место)
-    const exeDir = path.dirname(app.getPath('exe'));
-    dbDir = path.join(exeDir, 'data');
-    dbPath = path.join(dbDir, 'custom.db');
+    // Важное исправление: используем PORTABLE_EXECUTABLE_DIR от electron-builder
+    // Это реальная папка где лежит EXE файл
+    let appDir;
+    if (process.env.PORTABLE_EXECUTABLE_DIR) {
+      appDir = process.env.PORTABLE_EXECUTABLE_DIR;
+    } else {
+      // Fallback - папка с exe
+      appDir = path.dirname(app.getPath('exe'));
+    }
     
-    log('exeDir: ' + exeDir);
+    dbDir = path.join(appDir, 'data');
+    dbPath = path.join(dbDir, 'custom.db');
+    prismaSchemaPath = path.join(cwd, 'prisma', 'schema.prisma');
+    
+    log('appDir (persistent): ' + appDir);
     log('dbDir: ' + dbDir);
     log('dbPath: ' + dbPath);
     
@@ -87,6 +98,7 @@ function startNextServer() {
     serverJs = path.join(cwd, 'server.js');
     dbDir = path.join(appPath, 'db');
     dbPath = path.join(dbDir, 'custom.db');
+    prismaSchemaPath = path.join(appPath, 'prisma', 'schema.prisma');
   }
 
   // Создаём папку для базы если нет
@@ -95,7 +107,7 @@ function startNextServer() {
     log('Created db directory: ' + dbDir);
   }
   
-  // Используем абсолютный путь к базе данных
+  // Абсолютный путь к базе
   const absoluteDbPath = path.resolve(dbPath);
   log('Absolute DB path: ' + absoluteDbPath);
   log('DB exists: ' + fs.existsSync(absoluteDbPath));
@@ -109,6 +121,34 @@ function startNextServer() {
   };
 
   log('DATABASE_URL: ' + env.DATABASE_URL);
+  
+  // Инициализируем базу если её нет
+  if (!fs.existsSync(absoluteDbPath)) {
+    log('Initializing database...');
+    try {
+      // Запускаем prisma db push для создания таблиц
+      const prismaCli = path.join(cwd, 'node_modules', 'prisma', 'build', 'index.js');
+      if (fs.existsSync(prismaCli)) {
+        execSync(`"${nodeExe}" "${prismaCli}" db push --skip-generate`, {
+          cwd: cwd,
+          env: env,
+          stdio: 'inherit'
+        });
+        log('Database initialized successfully');
+      } else {
+        log('Prisma CLI not found, trying alternative...');
+        // Пробуем через npx
+        execSync(`"${nodeExe}" -e "require('prisma/build').run()" db push --skip-generate`, {
+          cwd: cwd,
+          env: env,
+          stdio: 'inherit'
+        });
+      }
+    } catch (e) {
+      log('Database init error: ' + e.message);
+      // Продолжаем даже если ошибка - возможно база уже есть
+    }
+  }
   
   nextProcess = spawn(nodeExe, [serverJs], {
     cwd: cwd,
