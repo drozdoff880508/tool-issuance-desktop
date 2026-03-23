@@ -80,28 +80,15 @@
       },
       {
         "from": ".next/standalone",
-        "to": "standalone",
-        "filter": [
-          "**/*",
-          "!**/node_modules/.prisma/**/*",
-          "!**/node_modules/@prisma/**/*"
-        ]
+        "to": "standalone"
       },
       {
         "from": ".next/static",
         "to": "standalone/.next/static"
       },
       {
-        "from": "node_modules/.prisma",
-        "to": "standalone/node_modules/.prisma"
-      },
-      {
-        "from": "node_modules/@prisma",
-        "to": "standalone/node_modules/@prisma"
-      },
-      {
-        "from": "node_modules/prisma",
-        "to": "standalone/node_modules/prisma"
+        "from": "node_modules/@prisma/engines",
+        "to": "standalone/node_modules/@prisma/engines"
       },
       {
         "from": "public",
