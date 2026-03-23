@@ -17,7 +17,6 @@ if (!fs.existsSync(standaloneDir)) {
 
 console.log('Source .prisma/client:', sourcePrismaDir);
 console.log('Target .prisma/client:', targetPrismaDir);
-console.log('Engines dir:', enginesDir);
 
 // Создаём целевую директорию
 fs.mkdirSync(targetPrismaDir, { recursive: true });
@@ -48,7 +47,6 @@ if (fs.existsSync(sourcePrismaDir)) {
 if (fs.existsSync(enginesDir)) {
   console.log('\nCopying engines to .prisma/client...');
   
-  // Ищем engine файлы
   const engineFiles = fs.readdirSync(enginesDir);
   for (const file of engineFiles) {
     const srcPath = path.join(enginesDir, file);
@@ -80,6 +78,16 @@ const schemaDest = path.join(targetPrismaDir, 'schema.prisma');
 if (fs.existsSync(schemaSrc)) {
   fs.copyFileSync(schemaSrc, schemaDest);
   console.log('\nCopied schema.prisma');
+}
+
+// Копируем prisma CLI в standalone
+const prismaCliSrc = path.join(rootDir, 'node_modules', 'prisma');
+const prismaCliDest = path.join(standaloneDir, 'node_modules', 'prisma');
+if (fs.existsSync(prismaCliSrc) && !fs.existsSync(prismaCliDest)) {
+  console.log('\nCopying prisma CLI...');
+  fs.mkdirSync(prismaCliDest, { recursive: true });
+  copyDir(prismaCliSrc, prismaCliDest);
+  console.log('  Copied prisma CLI');
 }
 
 // Показываем результат
