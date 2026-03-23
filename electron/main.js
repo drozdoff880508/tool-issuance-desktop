@@ -53,18 +53,24 @@ function startNextServer() {
   log('=== STARTING SERVER ===');
   
   const isProd = app.isPackaged;
-  let nodeExe, serverJs, cwd, dbPath;
+  let nodeExe, serverJs, cwd;
+  
+  // Определяем путь к базе данных - в папке с программой, а не во временной!
+  let dbDir, dbPath;
   
   if (isProd) {
     nodeExe = path.join(process.resourcesPath, 'node', 'node.exe');
     cwd = path.join(process.resourcesPath, 'standalone');
     serverJs = path.join(cwd, 'server.js');
-    dbPath = path.join(cwd, 'db', 'custom.db');
     
-    log('nodeExe: ' + nodeExe + ' exists=' + fs.existsSync(nodeExe));
-    log('cwd: ' + cwd + ' exists=' + fs.existsSync(cwd));
-    log('serverJs: ' + serverJs + ' exists=' + fs.existsSync(serverJs));
-    log('dbPath: ' + dbPath + ' exists=' + fs.existsSync(dbPath));
+    // База данных в папке с exe файлом (постоянное место)
+    const exeDir = path.dirname(app.getPath('exe'));
+    dbDir = path.join(exeDir, 'data');
+    dbPath = path.join(dbDir, 'custom.db');
+    
+    log('exeDir: ' + exeDir);
+    log('dbDir: ' + dbDir);
+    log('dbPath: ' + dbPath);
     
     if (!fs.existsSync(nodeExe)) {
       showError('Node.js not found', 'Path: ' + nodeExe);
@@ -74,29 +80,25 @@ function startNextServer() {
       showError('Server not found', 'Path: ' + serverJs);
       return;
     }
-    
-    // Создаём директорию db если нет
-    const dbDir = path.join(cwd, 'db');
-    if (!fs.existsSync(dbDir)) {
-      fs.mkdirSync(dbDir, { recursive: true });
-      log('Created db directory: ' + dbDir);
-    }
-    
-    // Если базы нет, создаём пустую
-    if (!fs.existsSync(dbPath)) {
-      log('Database not found, will be created on first run');
-    }
   } else {
     const appPath = path.join(__dirname, '..');
     nodeExe = path.join(appPath, 'node', 'node.exe');
     cwd = path.join(appPath, '.next', 'standalone');
     serverJs = path.join(cwd, 'server.js');
-    dbPath = path.join(cwd, 'db', 'custom.db');
+    dbDir = path.join(appPath, 'db');
+    dbPath = path.join(dbDir, 'custom.db');
   }
 
+  // Создаём папку для базы если нет
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+    log('Created db directory: ' + dbDir);
+  }
+  
   // Используем абсолютный путь к базе данных
   const absoluteDbPath = path.resolve(dbPath);
   log('Absolute DB path: ' + absoluteDbPath);
+  log('DB exists: ' + fs.existsSync(absoluteDbPath));
   
   const env = {
     ...process.env,
