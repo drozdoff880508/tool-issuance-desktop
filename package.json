@@ -34,6 +34,7 @@
     "date-fns": "^4.1.0",
     "lucide-react": "^0.525.0",
     "next": "^16.1.1",
+    "prisma": "6",
     "qrcode.react": "^4.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -57,7 +58,6 @@
     "electron-builder": "^25.1.8",
     "eslint": "^9",
     "eslint-config-next": "^16.1.1",
-    "prisma": "6",
     "tailwindcss": "^4",
     "tw-animate-css": "^1.3.5",
     "typescript": "^5",
@@ -87,6 +87,10 @@
         "to": "standalone/.next/static"
       },
       {
+        "from": "node_modules/prisma",
+        "to": "standalone/node_modules/prisma"
+      },
+      {
         "from": "node_modules/@prisma/engines",
         "to": "standalone/node_modules/@prisma/engines"
       },
@@ -97,10 +101,6 @@
       {
         "from": "prisma",
         "to": "standalone/prisma"
-      },
-      {
-        "from": "db",
-        "to": "standalone/db"
       },
       {
         "from": ".env",
