@@ -47,98 +47,24 @@ function showError(title, msg) {
   mainWindow.loadURL('data:text/html,' + encodeURIComponent(html));
 }
 
-function listDir(dir, max = 30) {
-  try {
-    if (!fs.existsSync(dir)) return 'NOT FOUND: ' + dir;
-    const items = fs.readdirSync(dir).slice(0, max);
-    return items.map(i => {
-      try {
-        const p = path.join(dir, i);
-        const stat = fs.statSync(p);
-        if (stat.isDirectory()) {
-          return '[D] ' + i;
-        }
-        return '     ' + i + ' (' + stat.size + ' bytes)';
-      } catch { return i; }
-    }).join('\n');
-  } catch(e) { return 'ERROR: ' + e.message; }
-}
-
 function startNextServer() {
   const port = 3000;
   
   log('=== STARTING SERVER ===');
-  log('isPackaged: ' + app.isPackaged);
-  log('resourcesPath: ' + process.resourcesPath);
   
   const isProd = app.isPackaged;
-  let nodeExe, serverJs, cwd;
+  let nodeExe, serverJs, cwd, dbPath;
   
   if (isProd) {
     nodeExe = path.join(process.resourcesPath, 'node', 'node.exe');
     cwd = path.join(process.resourcesPath, 'standalone');
     serverJs = path.join(cwd, 'server.js');
+    dbPath = path.join(cwd, 'db', 'custom.db');
     
-    log('\n--- PATHS ---');
     log('nodeExe: ' + nodeExe + ' exists=' + fs.existsSync(nodeExe));
     log('cwd: ' + cwd + ' exists=' + fs.existsSync(cwd));
     log('serverJs: ' + serverJs + ' exists=' + fs.existsSync(serverJs));
-    
-    log('\n--- RESOURCES ROOT ---');
-    log(listDir(process.resourcesPath));
-    
-    log('\n--- STANDALONE ROOT ---');
-    log(listDir(cwd));
-    
-    log('\n--- STANDALONE NODE_MODULES ---');
-    const nmPath = path.join(cwd, 'node_modules');
-    if (fs.existsSync(nmPath)) {
-      log(listDir(nmPath));
-    }
-    
-    log('\n--- .PRISMA FOLDER ---');
-    const prismaPath = path.join(cwd, 'node_modules', '.prisma');
-    if (fs.existsSync(prismaPath)) {
-      log(listDir(prismaPath));
-      log('\n--- .PRISMA/CLIENT ---');
-      const clientPath = path.join(prismaPath, 'client');
-      if (fs.existsSync(clientPath)) {
-        log(listDir(clientPath));
-        
-        // Читаем index.js чтобы увидеть что он пытается загрузить
-        const indexPath = path.join(clientPath, 'index.js');
-        if (fs.existsSync(indexPath)) {
-          log('\n--- index.js first 20 lines ---');
-          const lines = fs.readFileSync(indexPath, 'utf8').split('\n').slice(0, 20);
-          log(lines.join('\n'));
-        }
-      }
-    }
-    
-    log('\n--- @PRISMA FOLDER ---');
-    const atPrismaPath = path.join(cwd, 'node_modules', '@prisma');
-    if (fs.existsSync(atPrismaPath)) {
-      log(listDir(atPrismaPath));
-      log('\n--- @PRISMA/ENGINES ---');
-      const enginesPath = path.join(atPrismaPath, 'engines');
-      if (fs.existsSync(enginesPath)) {
-        log(listDir(enginesPath));
-      }
-    }
-    
-    // Check .env
-    const envPath = path.join(cwd, '.env');
-    log('\n.env exists: ' + fs.existsSync(envPath));
-    if (fs.existsSync(envPath)) {
-      log('.env content: ' + fs.readFileSync(envPath, 'utf8'));
-    }
-    
-    // Check db
-    const dbPath = path.join(cwd, 'db');
-    log('\ndb folder exists: ' + fs.existsSync(dbPath));
-    if (fs.existsSync(dbPath)) {
-      log('db contents: ' + listDir(dbPath, 10));
-    }
+    log('dbPath: ' + dbPath + ' exists=' + fs.existsSync(dbPath));
     
     if (!fs.existsSync(nodeExe)) {
       showError('Node.js not found', 'Path: ' + nodeExe);
@@ -148,21 +74,39 @@ function startNextServer() {
       showError('Server not found', 'Path: ' + serverJs);
       return;
     }
+    
+    // Создаём директорию db если нет
+    const dbDir = path.join(cwd, 'db');
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
+      log('Created db directory: ' + dbDir);
+    }
+    
+    // Если базы нет, создаём пустую
+    if (!fs.existsSync(dbPath)) {
+      log('Database not found, will be created on first run');
+    }
   } else {
     const appPath = path.join(__dirname, '..');
     nodeExe = path.join(appPath, 'node', 'node.exe');
     cwd = path.join(appPath, '.next', 'standalone');
     serverJs = path.join(cwd, 'server.js');
+    dbPath = path.join(cwd, 'db', 'custom.db');
   }
 
+  // Используем абсолютный путь к базе данных
+  const absoluteDbPath = path.resolve(dbPath);
+  log('Absolute DB path: ' + absoluteDbPath);
+  
   const env = {
     ...process.env,
     PORT: String(port),
     HOSTNAME: 'localhost',
-    NODE_ENV: 'production'
+    NODE_ENV: 'production',
+    DATABASE_URL: 'file:' + absoluteDbPath.replace(/\\/g, '/')
   };
 
-  log('\n--- SPAWNING SERVER ---');
+  log('DATABASE_URL: ' + env.DATABASE_URL);
   
   nextProcess = spawn(nodeExe, [serverJs], {
     cwd: cwd,
