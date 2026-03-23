@@ -42,19 +42,23 @@ function showError(title, msg) {
   log('ERROR: ' + title + ' - ' + msg);
   const html = `<html><head><style>
     body{font-family:Arial;padding:20px;background:#1a1a2e;color:#eee}
-    h1{color:#ff6b6b}pre{background:#16213e;padding:15px;overflow:auto;white-space:pre-wrap}
+    h1{color:#ff6b6b}pre{background:#16213e;padding:15px;overflow:auto;white-space:pre-wrap;font-size:11px}
   </style></head><body><h1>${title}</h1><pre>${msg}</pre></body></html>`;
   mainWindow.loadURL('data:text/html,' + encodeURIComponent(html));
 }
 
-function listDir(dir, max = 20) {
+function listDir(dir, max = 30) {
   try {
     if (!fs.existsSync(dir)) return 'NOT FOUND: ' + dir;
     const items = fs.readdirSync(dir).slice(0, max);
     return items.map(i => {
       try {
         const p = path.join(dir, i);
-        return fs.statSync(p).isDirectory() ? '[D] ' + i : i;
+        const stat = fs.statSync(p);
+        if (stat.isDirectory()) {
+          return '[D] ' + i;
+        }
+        return '     ' + i + ' (' + stat.size + ' bytes)';
       } catch { return i; }
     }).join('\n');
   } catch(e) { return 'ERROR: ' + e.message; }
@@ -80,11 +84,47 @@ function startNextServer() {
     log('cwd: ' + cwd + ' exists=' + fs.existsSync(cwd));
     log('serverJs: ' + serverJs + ' exists=' + fs.existsSync(serverJs));
     
-    log('\n--- RESOURCES ---');
+    log('\n--- RESOURCES ROOT ---');
     log(listDir(process.resourcesPath));
     
-    log('\n--- STANDALONE ---');
+    log('\n--- STANDALONE ROOT ---');
     log(listDir(cwd));
+    
+    log('\n--- STANDALONE NODE_MODULES ---');
+    const nmPath = path.join(cwd, 'node_modules');
+    if (fs.existsSync(nmPath)) {
+      log(listDir(nmPath));
+    }
+    
+    log('\n--- .PRISMA FOLDER ---');
+    const prismaPath = path.join(cwd, 'node_modules', '.prisma');
+    if (fs.existsSync(prismaPath)) {
+      log(listDir(prismaPath));
+      log('\n--- .PRISMA/CLIENT ---');
+      const clientPath = path.join(prismaPath, 'client');
+      if (fs.existsSync(clientPath)) {
+        log(listDir(clientPath));
+        
+        // Читаем index.js чтобы увидеть что он пытается загрузить
+        const indexPath = path.join(clientPath, 'index.js');
+        if (fs.existsSync(indexPath)) {
+          log('\n--- index.js first 20 lines ---');
+          const lines = fs.readFileSync(indexPath, 'utf8').split('\n').slice(0, 20);
+          log(lines.join('\n'));
+        }
+      }
+    }
+    
+    log('\n--- @PRISMA FOLDER ---');
+    const atPrismaPath = path.join(cwd, 'node_modules', '@prisma');
+    if (fs.existsSync(atPrismaPath)) {
+      log(listDir(atPrismaPath));
+      log('\n--- @PRISMA/ENGINES ---');
+      const enginesPath = path.join(atPrismaPath, 'engines');
+      if (fs.existsSync(enginesPath)) {
+        log(listDir(enginesPath));
+      }
+    }
     
     // Check .env
     const envPath = path.join(cwd, '.env');
@@ -97,26 +137,15 @@ function startNextServer() {
     const dbPath = path.join(cwd, 'db');
     log('\ndb folder exists: ' + fs.existsSync(dbPath));
     if (fs.existsSync(dbPath)) {
-      log('db contents: ' + listDir(dbPath));
-    }
-    
-    // Check node_modules/.prisma
-    const prismaPath = path.join(cwd, 'node_modules', '.prisma');
-    log('\n.prisma exists: ' + fs.existsSync(prismaPath));
-    
-    // Check node_modules/@prisma
-    const prismaEngines = path.join(cwd, 'node_modules', '@prisma', 'engines');
-    log('@prisma/engines exists: ' + fs.existsSync(prismaEngines));
-    if (fs.existsSync(prismaEngines)) {
-      log('engines: ' + listDir(prismaEngines));
+      log('db contents: ' + listDir(dbPath, 10));
     }
     
     if (!fs.existsSync(nodeExe)) {
-      showError('Node.js not found', 'Path: ' + nodeExe + '\n\nResources:\n' + listDir(process.resourcesPath));
+      showError('Node.js not found', 'Path: ' + nodeExe);
       return;
     }
     if (!fs.existsSync(serverJs)) {
-      showError('Server not found', 'Path: ' + serverJs + '\n\nStandalone:\n' + listDir(cwd));
+      showError('Server not found', 'Path: ' + serverJs);
       return;
     }
   } else {
@@ -134,9 +163,6 @@ function startNextServer() {
   };
 
   log('\n--- SPAWNING SERVER ---');
-  log('nodeExe: ' + nodeExe);
-  log('serverJs: ' + serverJs);
-  log('cwd: ' + cwd);
   
   nextProcess = spawn(nodeExe, [serverJs], {
     cwd: cwd,
