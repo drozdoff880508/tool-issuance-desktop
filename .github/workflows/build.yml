@@ -43,19 +43,27 @@ jobs:
           Write-Host "Creating seed database with tables..."
           
           # Создаём папку для seed базы
-          New-Item -ItemType Directory -Force -Path ".\seed-db"
+          New-Item -ItemType Directory -Force -Path ".\seed-db" | Out-Null
           
-          # Устанавливаем путь к seed базе
-          $env:DATABASE_URL = "file:./seed-db/seed.db"
+          # Используем абсолютный путь для DATABASE_URL
+          $seedDbAbsPath = "$PWD/seed-db/seed.db".Replace('\', '/')
+          $env:DATABASE_URL = "file:$seedDbAbsPath"
           
+          Write-Host "DATABASE_URL: $($env:DATABASE_URL)"
           Write-Host "Running prisma db push to create tables..."
+          
           npx prisma db push --skip-generate
           
           # Проверяем что база создана
+          Write-Host "Checking for database file..."
+          Get-ChildItem ".\seed-db" -ErrorAction SilentlyContinue
+          
           if (Test-Path ".\seed-db\seed.db") {
             $size = (Get-Item ".\seed-db\seed.db").Length
             Write-Host "Seed database created successfully. Size: $size bytes"
           } else {
+            Write-Host "Database not found at expected location. Searching..."
+            Get-ChildItem "." -Filter "*.db" -Recurse -ErrorAction SilentlyContinue
             Write-Error "Failed to create seed database"
             exit 1
           }
