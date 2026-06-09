@@ -88,6 +88,7 @@ export async function PUT(
         name: data.name,
         inventoryNumber: data.inventoryNumber,
         categoryId: data.categoryId,
+        quantity: data.quantity || 1,
         notes: data.notes || null,
         status: data.status
       },

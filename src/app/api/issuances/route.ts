@@ -47,8 +47,9 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await request.json()
+    const quantity = data.quantity || 1
     
-    // Check if tool is available
+    // Check if tool exists and calculate available quantity
     const tool = await db.tool.findUnique({
       where: { id: data.toolId },
       include: {
@@ -60,9 +61,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Инструмент не найден' }, { status: 404 })
     }
     
-    if (tool.status !== 'IN_STOCK') {
+    // Calculate issued quantity
+    const issuedQuantity = tool.issuances.reduce((sum, i) => sum + i.quantity, 0)
+    const availableQuantity = tool.quantity - issuedQuantity
+    
+    if (availableQuantity < quantity) {
       return NextResponse.json(
-        { error: 'Инструмент не доступен для выдачи' },
+        { error: `Недостаточно инструмента. Доступно: ${availableQuantity}` },
         { status: 400 }
       )
     }
@@ -79,28 +84,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create issuance and update tool status
-    const issuance = await db.$transaction(async (tx) => {
-      const newIssuance = await tx.issuance.create({
-        data: {
-          toolId: data.toolId,
-          employeeId: data.employeeId,
-          issuedBy: session.id,
-          expectedReturnDate: data.expectedReturnDate ? new Date(data.expectedReturnDate) : null,
-          notes: data.notes || null
-        },
-        include: {
-          tool: { include: { category: true } },
-          employee: true
-        }
-      })
-      
-      await tx.tool.update({
-        where: { id: data.toolId },
-        data: { status: 'ISSUED' }
-      })
-      
-      return newIssuance
+    // Create issuance
+    const issuance = await db.issuance.create({
+      data: {
+        toolId: data.toolId,
+        employeeId: data.employeeId,
+        quantity: quantity,
+        issuedBy: session.id,
+        expectedReturnDate: data.expectedReturnDate ? new Date(data.expectedReturnDate) : null,
+        notes: data.notes || null
+      },
+      include: {
+        tool: { include: { category: true } },
+        employee: true
+      }
     })
 
     return NextResponse.json(issuance)

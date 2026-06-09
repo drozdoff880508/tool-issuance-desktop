@@ -72,6 +72,7 @@ export async function POST(request: NextRequest) {
         inventoryNumber: data.inventoryNumber,
         categoryId: data.categoryId,
         qrCode: data.qrCode || generateQRCode(),
+        quantity: data.quantity || 1,
         notes: data.notes || null,
         status: 'IN_STOCK'
       },

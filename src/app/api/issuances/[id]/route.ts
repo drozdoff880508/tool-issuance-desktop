@@ -33,27 +33,18 @@ export async function PUT(
       )
     }
 
-    // Return tool
-    const updatedIssuance = await db.$transaction(async (tx) => {
-      const updated = await tx.issuance.update({
-        where: { id },
-        data: {
-          returnedAt: new Date(),
-          returnedBy: session.id,
-          returnNotes: data.returnNotes || null
-        },
-        include: {
-          tool: { include: { category: true } },
-          employee: true
-        }
-      })
-      
-      await tx.tool.update({
-        where: { id: issuance.toolId },
-        data: { status: 'IN_STOCK' }
-      })
-      
-      return updated
+    // Return tool (just mark as returned, no status change needed)
+    const updatedIssuance = await db.issuance.update({
+      where: { id },
+      data: {
+        returnedAt: new Date(),
+        returnedBy: session.id,
+        returnNotes: data.returnNotes || null
+      },
+      include: {
+        tool: { include: { category: true } },
+        employee: true
+      }
     })
 
     return NextResponse.json(updatedIssuance)

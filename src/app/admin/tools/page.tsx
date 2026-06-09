@@ -43,10 +43,11 @@ interface Tool {
   name: string
   inventoryNumber: string
   qrCode: string
+  quantity: number
   status: string
   notes: string | null
   category: { id: string; name: string }
-  issuances: { id: string; employee: { lastName: string; firstName: string } }[]
+  issuances: { id: string; quantity: number; employee: { lastName: string; firstName: string } }[]
 }
 
 export default function ToolsPage() {
@@ -66,6 +67,7 @@ export default function ToolsPage() {
     name: '',
     inventoryNumber: '',
     categoryId: '',
+    quantity: 1,
     notes: ''
   })
 
@@ -107,6 +109,7 @@ export default function ToolsPage() {
       name: '',
       inventoryNumber: '',
       categoryId: categories[0]?.id || '',
+      quantity: 1,
       notes: ''
     })
     setDialogOpen(true)
@@ -118,6 +121,7 @@ export default function ToolsPage() {
       name: tool.name,
       inventoryNumber: tool.inventoryNumber,
       categoryId: tool.category.id,
+      quantity: tool.quantity,
       notes: tool.notes || ''
     })
     setDialogOpen(true)
@@ -185,19 +189,6 @@ export default function ToolsPage() {
   const openQrDialog = (tool: Tool) => {
     setQrTool(tool)
     setQrDialogOpen(true)
-  }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'IN_STOCK':
-        return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">На складе</Badge>
-      case 'ISSUED':
-        return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">Выдан</Badge>
-      case 'WRITTEN_OFF':
-        return <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">Списан</Badge>
-      default:
-        return <Badge variant="outline">{status}</Badge>
-    }
   }
 
   const handlePrint = () => {
@@ -271,7 +262,9 @@ export default function ToolsPage() {
                   <TableHead>Название</TableHead>
                   <TableHead>Инв. номер</TableHead>
                   <TableHead>Категория</TableHead>
-                  <TableHead>Статус</TableHead>
+                  <TableHead className="text-center">Всего</TableHead>
+                  <TableHead className="text-center">Выдано</TableHead>
+                  <TableHead className="text-center">Доступно</TableHead>
                   <TableHead>У кого</TableHead>
                   <TableHead className="text-right">Действия</TableHead>
                 </TableRow>
@@ -279,62 +272,89 @@ export default function ToolsPage() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">
+                    <TableCell colSpan={8} className="text-center py-8">
                       Загрузка...
                     </TableCell>
                   </TableRow>
                 ) : tools.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       Инструмент не найден
                     </TableCell>
                   </TableRow>
                 ) : (
-                  tools.map((tool) => (
-                    <TableRow key={tool.id} className={tool.status === 'WRITTEN_OFF' ? 'opacity-50' : ''}>
-                      <TableCell className="font-medium">{tool.name}</TableCell>
-                      <TableCell>{tool.inventoryNumber}</TableCell>
-                      <TableCell>{tool.category.name}</TableCell>
-                      <TableCell>{getStatusBadge(tool.status)}</TableCell>
-                      <TableCell>
-                        {tool.issuances[0] ? (
-                          <span>
-                            {tool.issuances[0].employee.lastName} {tool.issuances[0].employee.firstName}
+                  tools.map((tool) => {
+                    const issuedQty = tool.issuances.reduce((sum, i) => sum + i.quantity, 0)
+                    const availableQty = tool.quantity - issuedQty
+                    
+                    return (
+                      <TableRow key={tool.id} className={tool.status === 'WRITTEN_OFF' ? 'opacity-50' : ''}>
+                        <TableCell className="font-medium">{tool.name}</TableCell>
+                        <TableCell>{tool.inventoryNumber}</TableCell>
+                        <TableCell>{tool.category.name}</TableCell>
+                        <TableCell className="text-center">
+                          <span className="font-bold">{tool.quantity}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className={`font-bold ${issuedQty > 0 ? 'text-orange-600' : ''}`}>
+                            {issuedQty}
                           </span>
-                        ) : '-'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => openQrDialog(tool)}
-                            title="QR-код"
-                          >
-                            <QrCode className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => openEditDialog(tool)}
-                            title="Редактировать"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          {tool.status !== 'WRITTEN_OFF' && (
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant={availableQty <= 0 ? 'destructive' : 'outline'} className={availableQty <= 0 ? '' : 'bg-green-50 text-green-700 border-green-200'}>
+                            {availableQty}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {tool.issuances && tool.issuances.length > 0 ? (
+                            <div className="space-y-1">
+                              {tool.issuances.slice(0, 2).map((iss, idx) => (
+                                <div key={idx} className="text-sm">
+                                  {iss.employee.lastName} {iss.employee.firstName}
+                                  <span className="text-muted-foreground ml-1">×{iss.quantity}</span>
+                                </div>
+                              ))}
+                              {tool.issuances.length > 2 && (
+                                <div className="text-xs text-muted-foreground">
+                                  +{tool.issuances.length - 2} ещё
+                                </div>
+                              )}
+                            </div>
+                          ) : '-'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => handleWriteOff(tool)}
-                              title="Списать"
+                              onClick={() => openQrDialog(tool)}
+                              title="QR-код"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <QrCode className="w-4 h-4" />
                             </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => openEditDialog(tool)}
+                              title="Редактировать"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            {tool.status !== 'WRITTEN_OFF' && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleWriteOff(tool)}
+                                title="Списать"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
                 )}
               </TableBody>
             </Table>
@@ -392,6 +412,17 @@ export default function ToolsPage() {
                 </Select>
               </div>
               <div className="space-y-2">
+                <Label htmlFor="quantity">Количество *</Label>
+                <Input
+                  id="quantity"
+                  type="number"
+                  min={1}
+                  value={formData.quantity}
+                  onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="notes">Примечания</Label>
                 <Input
                   id="notes"
@@ -430,6 +461,7 @@ export default function ToolsPage() {
                   <p className="font-bold text-lg">{qrTool.name}</p>
                   <p className="text-muted-foreground">Инв. №: {qrTool.inventoryNumber}</p>
                   <p className="text-sm text-muted-foreground">QR: {qrTool.qrCode}</p>
+                  <p className="text-sm">Количество: {qrTool.quantity} шт.</p>
                 </div>
               </>
             )}
