@@ -44,7 +44,15 @@ export async function GET(
       return NextResponse.json({ error: 'Инструмент не найден' }, { status: 404 })
     }
 
-    return NextResponse.json(tool)
+    // Добавляем вычисляемые поля issuedQuantity и availableQuantity
+    const issuedQuantity = tool.issuances?.reduce((sum: number, i: any) => sum + (i.quantity || 1), 0) || 0
+    const toolWithQuantity = {
+      ...tool,
+      issuedQuantity,
+      availableQuantity: (tool.quantity || 1) - issuedQuantity
+    }
+
+    return NextResponse.json(toolWithQuantity)
   } catch (error) {
     console.error('Get tool error:', error)
     return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 })
@@ -88,6 +96,7 @@ export async function PUT(
         name: data.name,
         inventoryNumber: data.inventoryNumber,
         categoryId: data.categoryId,
+        quantity: data.quantity || 1,
         notes: data.notes || null,
         status: data.status
       },

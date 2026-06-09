@@ -47,7 +47,8 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await request.json()
-    
+    const quantity = data.quantity || 1
+
     // Check if tool is available
     const tool = await db.tool.findUnique({
       where: { id: data.toolId },
@@ -55,14 +56,18 @@ export async function POST(request: NextRequest) {
         issuances: { where: { returnedAt: null } }
       }
     })
-    
+
     if (!tool) {
       return NextResponse.json({ error: 'Инструмент не найден' }, { status: 404 })
     }
-    
-    if (tool.status !== 'IN_STOCK') {
+
+    // Подсчитываем уже выданное количество
+    const issuedQuantity = tool.issuances?.reduce((sum: number, i: any) => sum + (i.quantity || 1), 0) || 0
+    const availableQuantity = (tool.quantity || 1) - issuedQuantity
+
+    if (availableQuantity < quantity) {
       return NextResponse.json(
-        { error: 'Инструмент не доступен для выдачи' },
+        { error: `Недостаточно инструмента. Доступно: ${availableQuantity}` },
         { status: 400 }
       )
     }
@@ -71,7 +76,7 @@ export async function POST(request: NextRequest) {
     const employee = await db.employee.findUnique({
       where: { id: data.employeeId }
     })
-    
+
     if (!employee || !employee.isActive) {
       return NextResponse.json(
         { error: 'Сотрудник не найден или неактивен' },
@@ -79,28 +84,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create issuance and update tool status
-    const issuance = await db.$transaction(async (tx) => {
-      const newIssuance = await tx.issuance.create({
-        data: {
-          toolId: data.toolId,
-          employeeId: data.employeeId,
-          issuedBy: session.id,
-          expectedReturnDate: data.expectedReturnDate ? new Date(data.expectedReturnDate) : null,
-          notes: data.notes || null
-        },
-        include: {
-          tool: { include: { category: true } },
-          employee: true
-        }
-      })
-      
-      await tx.tool.update({
-        where: { id: data.toolId },
-        data: { status: 'ISSUED' }
-      })
-      
-      return newIssuance
+    // Create issuance (status remains IN_STOCK, tracking via quantity)
+    const issuance = await db.issuance.create({
+      data: {
+        toolId: data.toolId,
+        employeeId: data.employeeId,
+        quantity: quantity,
+        issuedBy: session.id,
+        expectedReturnDate: data.expectedReturnDate ? new Date(data.expectedReturnDate) : null,
+        notes: data.notes || null
+      },
+      include: {
+        tool: { include: { category: true } },
+        employee: true
+      }
     })
 
     return NextResponse.json(issuance)

@@ -37,7 +37,17 @@ export async function GET(request: NextRequest) {
       orderBy: { name: 'asc' }
     })
 
-    return NextResponse.json(tools)
+    // Добавляем вычисляемые поля issuedQuantity и availableQuantity
+    const toolsWithQuantity = tools.map(tool => {
+      const issuedQuantity = tool.issuances?.reduce((sum: number, i: any) => sum + (i.quantity || 1), 0) || 0
+      return {
+        ...tool,
+        issuedQuantity,
+        availableQuantity: (tool.quantity || 1) - issuedQuantity
+      }
+    })
+
+    return NextResponse.json(toolsWithQuantity)
   } catch (error) {
     console.error('Get tools error:', error)
     return NextResponse.json({ error: 'Ошибка сервера' }, { status: 500 })
@@ -72,6 +82,7 @@ export async function POST(request: NextRequest) {
         inventoryNumber: data.inventoryNumber,
         categoryId: data.categoryId,
         qrCode: data.qrCode || generateQRCode(),
+        quantity: data.quantity || 1,
         notes: data.notes || null,
         status: 'IN_STOCK'
       },

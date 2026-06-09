@@ -44,6 +44,9 @@ interface Tool {
   inventoryNumber: string
   qrCode: string
   status: string
+  quantity: number
+  issuedQuantity: number
+  availableQuantity: number
   notes: string | null
   category: { id: string; name: string }
   issuances: { id: string; employee: { lastName: string; firstName: string } }[]
@@ -66,6 +69,7 @@ export default function ToolsPage() {
     name: '',
     inventoryNumber: '',
     categoryId: '',
+    quantity: 1,
     notes: ''
   })
 
@@ -107,6 +111,7 @@ export default function ToolsPage() {
       name: '',
       inventoryNumber: '',
       categoryId: categories[0]?.id || '',
+      quantity: 1,
       notes: ''
     })
     setDialogOpen(true)
@@ -118,6 +123,7 @@ export default function ToolsPage() {
       name: tool.name,
       inventoryNumber: tool.inventoryNumber,
       categoryId: tool.category.id,
+      quantity: tool.quantity || 1,
       notes: tool.notes || ''
     })
     setDialogOpen(true)
@@ -325,7 +331,9 @@ export default function ToolsPage() {
                   <TableHead>Название</TableHead>
                   <TableHead>Инв. номер</TableHead>
                   <TableHead>Категория</TableHead>
-                  <TableHead>Статус</TableHead>
+                  <TableHead className="text-center">Всего</TableHead>
+                  <TableHead className="text-center">Выдано</TableHead>
+                  <TableHead className="text-center">Доступно</TableHead>
                   <TableHead>У кого</TableHead>
                   <TableHead className="text-right">Действия</TableHead>
                 </TableRow>
@@ -333,13 +341,13 @@ export default function ToolsPage() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">
+                    <TableCell colSpan={8} className="text-center py-8">
                       Загрузка...
                     </TableCell>
                   </TableRow>
                 ) : tools.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       Инструмент не найден
                     </TableCell>
                   </TableRow>
@@ -349,7 +357,17 @@ export default function ToolsPage() {
                       <TableCell className="font-medium">{tool.name}</TableCell>
                       <TableCell>{tool.inventoryNumber}</TableCell>
                       <TableCell>{tool.category.name}</TableCell>
-                      <TableCell>{getStatusBadge(tool.status)}</TableCell>
+                      <TableCell className="text-center">{tool.quantity || 1}</TableCell>
+                      <TableCell className="text-center">
+                        <span className={(tool.issuedQuantity || 0) > 0 ? 'text-yellow-600 font-medium' : ''}>
+                          {tool.issuedQuantity || 0}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className={(tool.availableQuantity || 0) > 0 ? 'text-green-600 font-medium' : 'text-red-600'}>
+                          {tool.availableQuantity || 0}
+                        </span>
+                      </TableCell>
                       <TableCell>
                         {tool.issuances[0] ? (
                           <span>
@@ -444,6 +462,16 @@ export default function ToolsPage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="quantity">Количество (единиц)</Label>
+                <Input
+                  id="quantity"
+                  type="number"
+                  min="1"
+                  value={formData.quantity}
+                  onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="notes">Примечания</Label>

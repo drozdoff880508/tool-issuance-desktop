@@ -16,6 +16,13 @@ interface Stats {
   overdueIssuances: number
 }
 
+// Функция для подсчёта выданного количества для инструмента
+const getIssuedQuantity = (tool: any, issuances: any[]): number => {
+  return issuances
+    .filter(i => i.toolId === tool.id && !i.returnedAt)
+    .reduce((sum, i) => sum + (i.quantity || 1), 0)
+}
+
 export default function AdminPage() {
   const [stats, setStats] = useState<Stats | null>(null)
 
@@ -27,26 +34,35 @@ export default function AdminPage() {
           fetch('/api/tools'),
           fetch('/api/issuances?activeOnly=true')
         ])
-        
+
         const employees = await employeesRes.json()
         const tools = await toolsRes.json()
-        const issuances = await issuancesRes.json()
-        
+        const activeIssuances = await issuancesRes.json()
+
+        // Подсчитываем общее количество инструментов
+        const totalTools = tools.reduce((sum: number, t: any) => sum + (t.quantity || 1), 0)
+
+        // Подсчитываем выданное количество (сумма quantity из активных выдач)
+        const issuedQuantity = activeIssuances.reduce((sum: number, i: any) => sum + (i.quantity || 1), 0)
+
+        // Доступное количество = общее - выданное
+        const availableQuantity = totalTools - issuedQuantity
+
         setStats({
           employees: employees.length,
           activeEmployees: employees.filter((e: any) => e.isActive).length,
-          tools: tools.length,
-          availableTools: tools.filter((t: any) => t.status === 'IN_STOCK').length,
-          issuedTools: tools.filter((t: any) => t.status === 'ISSUED').length,
+          tools: totalTools,
+          availableTools: availableQuantity,
+          issuedTools: issuedQuantity,
           writtenOffTools: tools.filter((t: any) => t.status === 'WRITTEN_OFF').length,
-          activeIssuances: issuances.length,
-          overdueIssuances: issuances.filter((i: any) => i.isOverdue).length
+          activeIssuances: activeIssuances.length,
+          overdueIssuances: activeIssuances.filter((i: any) => i.isOverdue).length
         })
       } catch (error) {
         console.error('Failed to fetch stats:', error)
       }
     }
-    
+
     fetchStats()
   }, [])
 

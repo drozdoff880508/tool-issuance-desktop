@@ -50,6 +50,9 @@ interface Tool {
   inventoryNumber: string
   qrCode: string
   status: string
+  quantity: number
+  issuedQuantity: number
+  availableQuantity: number
   category: { name: string }
   issuances: {
     id: string
@@ -82,6 +85,7 @@ export default function TerminalPage() {
   const [processing, setProcessing] = useState(false)
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [returnDate, setReturnDate] = useState('')
+  const [issueQuantity, setIssueQuantity] = useState(1)
   
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -141,6 +145,7 @@ export default function TerminalPage() {
         }
         
         setTool(data)
+        setIssueQuantity(1) // Reset quantity when scanning new tool
       } catch {
         setError('Ошибка соединения')
       }
@@ -158,7 +163,7 @@ export default function TerminalPage() {
   // Issue tool
   const issueTool = async () => {
     if (!tool || !employee) return
-    
+
     setProcessing(true)
     try {
       const res = await fetch('/api/issuances', {
@@ -167,25 +172,26 @@ export default function TerminalPage() {
         body: JSON.stringify({
           toolId: tool.id,
           employeeId: employee.id,
+          quantity: issueQuantity,
           expectedReturnDate: returnDate || null
         })
       })
-      
+
       const data = await res.json()
-      
+
       if (!res.ok) {
         setError(data.error || 'Ошибка выдачи')
         return
       }
-      
-      setSuccess(`Выдан: ${tool.name}`)
+
+      setSuccess(`Выдан: ${tool.name} (${issueQuantity} шт.)`)
       setHistory(prev => [{
         type: 'issue',
-        toolName: tool.name,
+        toolName: `${tool.name} (${issueQuantity} шт.)`,
         employeeName: `${employee.lastName} ${employee.firstName}`,
         time: new Date()
       }, ...prev].slice(0, 20))
-      
+
       setTool(null)
       const empRes = await fetch(`/api/employees/${employee.id}`)
       const empData = await empRes.json()
@@ -386,7 +392,7 @@ export default function TerminalPage() {
             {/* Tool info - compact */}
             {tool && (
               <Card className={
-                tool.status === 'IN_STOCK' ? 'border-green-200 bg-green-50' :
+                tool.availableQuantity > 0 ? 'border-green-200 bg-green-50' :
                 tool.issuances[0]?.employee.id === employee?.id ? 'border-yellow-200 bg-yellow-50' :
                 'border-red-200 bg-red-50'
               }>
@@ -398,10 +404,53 @@ export default function TerminalPage() {
                       <p className="text-sm text-muted-foreground">
                         Инв. №: {tool.inventoryNumber} • {tool.category.name}
                       </p>
-                      
+
+                      {/* Quantity display */}
+                      <div className="mt-2 flex items-center gap-2 text-xs">
+                        <Badge variant="outline" className="text-xs">
+                          Всего: {tool.quantity || 1}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs bg-yellow-50">
+                          Выдано: {tool.issuedQuantity || 0}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs bg-green-50">
+                          Доступно: {tool.availableQuantity || 0}
+                        </Badge>
+                      </div>
+
                       <div className="mt-3">
-                        {tool.status === 'IN_STOCK' && (
+                        {tool.availableQuantity > 0 && (
                           <div className="space-y-2">
+                            {/* Quantity selector */}
+                            {(tool.availableQuantity || 0) > 1 && (
+                              <div className="flex items-center gap-2">
+                                <Label className="text-xs">Количество:</Label>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 w-7 p-0"
+                                    onClick={() => setIssueQuantity(Math.max(1, issueQuantity - 1))}
+                                    disabled={issueQuantity <= 1}
+                                  >
+                                    −
+                                  </Button>
+                                  <span className="w-8 text-center text-sm font-medium">{issueQuantity}</span>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 w-7 p-0"
+                                    onClick={() => setIssueQuantity(Math.min(tool.availableQuantity || 1, issueQuantity + 1))}
+                                    disabled={issueQuantity >= (tool.availableQuantity || 1)}
+                                  >
+                                    +
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+
                             {/* Return date picker */}
                             <div className="flex items-center gap-2">
                               <Calendar className="w-4 h-4 text-muted-foreground" />
@@ -414,21 +463,21 @@ export default function TerminalPage() {
                                 className="h-8 w-auto text-sm"
                               />
                             </div>
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               className="w-full h-10"
                               onClick={issueTool}
                               disabled={processing}
                             >
                               <Check className="w-4 h-4 mr-2" />
-                              Выдать
+                              Выдать {issueQuantity > 1 ? `(${issueQuantity} шт.)` : ''}
                             </Button>
                           </div>
                         )}
-                        
-                        {tool.status === 'ISSUED' && tool.issuances[0]?.employee.id === employee?.id && (
-                          <Button 
-                            size="sm" 
+
+                        {tool.availableQuantity <= 0 && tool.issuances[0]?.employee.id === employee?.id && (
+                          <Button
+                            size="sm"
                             variant="secondary"
                             className="w-full h-10"
                             onClick={returnTool}
@@ -438,15 +487,15 @@ export default function TerminalPage() {
                             Принять возврат
                           </Button>
                         )}
-                        
-                        {tool.status === 'ISSUED' && tool.issuances[0]?.employee.id !== employee?.id && (
+
+                        {tool.availableQuantity <= 0 && tool.issuances[0]?.employee.id !== employee?.id && tool.status !== 'WRITTEN_OFF' && (
                           <div className="bg-red-100 border border-red-300 rounded p-2">
                             <p className="text-xs font-medium text-red-800">
-                              Выдан: {tool.issuances[0].employee.lastName} {tool.issuances[0].employee.firstName}
+                              Нет в наличии (выдано: {tool.issuedQuantity || 0} из {tool.quantity || 1})
                             </p>
                           </div>
                         )}
-                        
+
                         {tool.status === 'WRITTEN_OFF' && (
                           <div className="bg-gray-100 border border-gray-300 rounded p-2">
                             <p className="text-xs font-medium text-gray-800">Инструмент списан</p>

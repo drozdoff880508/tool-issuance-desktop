@@ -41,6 +41,7 @@ model Tool {
   category        ToolCategory @relation(fields: [categoryId], references: [id])
   qrCode          String   @unique // Уникальный QR-код
   status          ToolStatus @default(IN_STOCK) // На складе / Выдан / Списан
+  quantity        Int      @default(1) // Общее количество единиц
   notes           String?  // Примечания
   createdAt       DateTime @default(now())
   issuances       Issuance[]
@@ -59,6 +60,7 @@ model Issuance {
   tool                Tool     @relation(fields: [toolId], references: [id])
   employeeId          String
   employee            Employee @relation(fields: [employeeId], references: [id])
+  quantity            Int      @default(1) // Количество выданного инструмента
   issuedAt            DateTime @default(now()) // Когда выдан
   issuedBy            String   // Кем выдан (ID кладовщика/админа)
   expectedReturnDate  DateTime? // Ожидаемая дата возврата
