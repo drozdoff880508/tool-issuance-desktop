@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Menu, shell, dialog } = require('electron')
 const path = require('path')
 const { spawn } = require('child_process')
+const fs = require('fs')
 
 let mainWindow = null
 let serverProcess = null
@@ -53,27 +54,7 @@ async function createWindow() {
     {
       label: 'Вид',
       submenu: [
-        { role: 'reload', label: 'Обновить' },
-        { type: 'separator' },
-        { role: 'togglefullscreen', label: 'Полный экран' },
-        { role: 'zoomIn', label: 'Увеличить' },
-        { role: 'zoomOut', label: 'Уменьшить' }
-      ]
-    },
-    {
-      label: 'Справка',
-      submenu: [
-        {
-          label: 'О программе',
-          click: () => {
-            dialog.showMessageBox(mainWindow, {
-              type: 'info',
-              title: 'О программе',
-              message: 'Система выдачи инструмента',
-              detail: 'Версия 1.0.0\n\nАвтоматизированная система учёта выдачи инструмента в цехе металлоконструкций.'
-            })
-          }
-        }
+        { role: 'reload', label: 'Обновить' }
       ]
     }
   ])
@@ -86,12 +67,30 @@ function startServer() {
     
     console.log('Starting server from:', appPath)
     
-    serverProcess = spawn('node', ['server.js'], {
+    // Определяем папку для данных
+    let dataDir
+    if (app.isPackaged) {
+      const exeDir = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe'))
+      dataDir = path.join(exeDir, 'data')
+    } else {
+      dataDir = path.join(__dirname, 'data')
+    }
+    
+    // Создаём папку данных если нет
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true })
+    }
+    
+    console.log('Data directory:', dataDir)
+    
+    // Используем встроенный Node.js Electron (process.execPath)
+    serverProcess = spawn(process.execPath, ['server.js'], {
       cwd: appPath,
       env: {
         ...process.env,
         NODE_ENV: 'production',
-        PORT: '3000'
+        PORT: '3000',
+        DATA_DIR: dataDir
       },
       stdio: 'pipe'
     })
@@ -104,7 +103,7 @@ function startServer() {
       console.error(`Server Error: ${data}`)
     })
 
-    setTimeout(resolve, 3000)
+    setTimeout(resolve, 2000)
   })
 }
 

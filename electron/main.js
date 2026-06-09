@@ -14,16 +14,23 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true
     },
-    title: 'Tool Issuance System'
+    title: 'Система выдачи инструмента',
+    show: false // Скрываем до загрузки
+  });
+
+  // Показываем окно когда готово
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
   });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 
+  // Минимальное меню
   const menu = Menu.buildFromTemplate([
     { label: 'Файл', submenu: [{ role: 'quit', label: 'Выход' }] },
-    { label: 'Вид', submenu: [{ role: 'reload' }, { role: 'toggledevtools' }] }
+    { label: 'Вид', submenu: [{ role: 'reload', label: 'Обновить' }] }
   ]);
   Menu.setApplicationMenu(menu);
 
@@ -44,7 +51,10 @@ function showError(title, msg) {
     body{font-family:Arial;padding:20px;background:#1a1a2e;color:#eee}
     h1{color:#ff6b6b}pre{background:#16213e;padding:15px;overflow:auto;white-space:pre-wrap;font-size:11px}
   </style></head><body><h1>${title}</h1><pre>${msg}</pre></body></html>`;
-  mainWindow.loadURL('data:text/html,' + encodeURIComponent(html));
+  if (mainWindow) {
+    mainWindow.loadURL('data:text/html,' + encodeURIComponent(html));
+    mainWindow.show();
+  }
 }
 
 function startNextServer() {
@@ -52,107 +62,52 @@ function startNextServer() {
   
   log('=== STARTING SERVER ===');
   log('isPackaged: ' + app.isPackaged);
-  log('PORTABLE_EXECUTABLE_DIR: ' + process.env.PORTABLE_EXECUTABLE_DIR);
-  log('exe path: ' + app.getPath('exe'));
-  log('cwd: ' + process.cwd());
   
   const isProd = app.isPackaged;
-  let nodeExe, serverJs, cwd;
-  let dbDir, dbPath;
+  let cwd, dbDir;
   
   if (isProd) {
-    nodeExe = path.join(process.resourcesPath, 'node', 'node.exe');
     cwd = path.join(process.resourcesPath, 'standalone');
-    serverJs = path.join(cwd, 'server.js');
     
-    // Используем PORTABLE_EXECUTABLE_DIR от electron-builder
-    // Это реальная папка где лежит EXE файл
+    // Папка данных рядом с EXE
     let appDir;
     if (process.env.PORTABLE_EXECUTABLE_DIR) {
       appDir = process.env.PORTABLE_EXECUTABLE_DIR;
     } else {
-      // Fallback - папка с exe
       appDir = path.dirname(app.getPath('exe'));
     }
     
     dbDir = path.join(appDir, 'data');
-    dbPath = path.join(dbDir, 'custom.db');
-    
-    log('appDir (persistent): ' + appDir);
+    log('appDir: ' + appDir);
     log('dbDir: ' + dbDir);
-    log('dbPath: ' + dbPath);
     
-    if (!fs.existsSync(nodeExe)) {
-      showError('Node.js not found', 'Path: ' + nodeExe);
-      return;
-    }
-    if (!fs.existsSync(serverJs)) {
-      showError('Server not found', 'Path: ' + serverJs);
+    if (!fs.existsSync(cwd)) {
+      showError('Файлы не найдены', 'Папка: ' + cwd);
       return;
     }
   } else {
-    const appPath = path.join(__dirname, '..');
-    nodeExe = path.join(appPath, 'node', 'node.exe');
-    cwd = path.join(appPath, '.next', 'standalone');
-    serverJs = path.join(cwd, 'server.js');
-    dbDir = path.join(appPath, 'db');
-    dbPath = path.join(dbDir, 'custom.db');
+    cwd = path.join(__dirname, '.next', 'standalone');
+    dbDir = path.join(__dirname, 'db');
   }
 
-  // Создаём папку для базы если нет
+  // Создаём папку для данных
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
-    log('Created db directory: ' + dbDir);
+    log('Created data directory: ' + dbDir);
   }
-  
-  // Абсолютный путь к базе
-  const absoluteDbPath = path.resolve(dbPath);
-  log('Absolute DB path: ' + absoluteDbPath);
-  log('DB exists: ' + fs.existsSync(absoluteDbPath));
-  
-  // Если базы данных нет - копируем seed базу
-  if (!fs.existsSync(absoluteDbPath)) {
-    log('Database not found, looking for seed database...');
-    
-    // Ищем seed базу в ресурсах
-    const seedDbPath = isProd 
-      ? path.join(process.resourcesPath, 'seed-db', 'seed.db')
-      : path.join(__dirname, '..', 'seed-db', 'seed.db');
-    
-    log('Seed DB path: ' + seedDbPath);
-    log('Seed DB exists: ' + fs.existsSync(seedDbPath));
-    
-    if (fs.existsSync(seedDbPath)) {
-      try {
-        // Копируем seed базу
-        fs.copyFileSync(seedDbPath, absoluteDbPath);
-        log('Seed database copied successfully to: ' + absoluteDbPath);
-        
-        // Проверяем размер
-        const stats = fs.statSync(absoluteDbPath);
-        log('Database size: ' + stats.size + ' bytes');
-      } catch (e) {
-        log('Failed to copy seed database: ' + e.message);
-        showError('Database Error', 'Failed to initialize database:\n' + e.message);
-        return;
-      }
-    } else {
-      log('WARNING: Seed database not found at ' + seedDbPath);
-      log('Application will start but may fail if database tables are missing');
-    }
-  }
-  
+
   const env = {
     ...process.env,
     PORT: String(port),
     HOSTNAME: 'localhost',
     NODE_ENV: 'production',
-    DATABASE_URL: 'file:' + absoluteDbPath.replace(/\\/g, '/')
+    DATA_DIR: dbDir
   };
 
-  log('DATABASE_URL: ' + env.DATABASE_URL);
+  log('DATA_DIR: ' + env.DATA_DIR);
   
-  nextProcess = spawn(nodeExe, [serverJs], {
+  // Используем встроенный Node.js Electron
+  nextProcess = spawn(process.execPath, ['server.js'], {
     cwd: cwd,
     env: env,
     stdio: ['ignore', 'pipe', 'pipe']
@@ -163,7 +118,7 @@ function startNextServer() {
 
   nextProcess.on('error', err => {
     log('SPAWN ERROR: ' + err.message);
-    showError('Spawn Error', err.message);
+    showError('Ошибка запуска', err.message);
   });
 
   nextProcess.stdout.on('data', data => {
@@ -180,36 +135,41 @@ function startNextServer() {
 
   nextProcess.on('close', code => {
     log('SERVER CLOSED: code=' + code);
-    if (code !== 0) {
-      showError('Server Error', 'Exit code: ' + code + '\n\nSTDOUT:\n' + stdout + '\n\nSTDERR:\n' + stderr);
+    if (code !== 0 && mainWindow) {
+      showError('Ошибка сервера', 'Exit code: ' + code + '\n\n' + stdout + '\n' + stderr);
     }
   });
 
-  // Check server
+  // Проверяем запуск сервера
   let attempts = 0;
   const check = () => {
     attempts++;
-    log('Checking server, attempt ' + attempts);
     
     const http = require('http');
     const req = http.get('http://localhost:' + port, res => {
       log('Server responded: ' + res.statusCode);
-      mainWindow.loadURL('http://localhost:' + port);
+      if (mainWindow) {
+        mainWindow.loadURL('http://localhost:' + port);
+      }
     });
     req.on('error', err => {
       log('Check error: ' + err.message);
       if (attempts < 30) setTimeout(check, 500);
-      else showError('Server Timeout', 'After 30 attempts\n\nSTDOUT:\n' + stdout + '\n\nSTDERR:\n' + stderr);
+      else showError('Таймаут запуска', 'Сервер не ответил за 15 секунд\n\n' + stdout + '\n' + stderr);
     });
     req.setTimeout(2000, () => req.destroy());
   };
   
-  setTimeout(check, 2000);
+  setTimeout(check, 1500);
 }
 
 app.whenReady().then(createWindow);
+
 app.on('window-all-closed', () => {
   if (nextProcess) nextProcess.kill();
   if (process.platform !== 'darwin') app.quit();
 });
-app.on('before-quit', () => { if (nextProcess) nextProcess.kill(); });
+
+app.on('before-quit', () => {
+  if (nextProcess) nextProcess.kill();
+});
